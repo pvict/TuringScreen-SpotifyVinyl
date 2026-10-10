@@ -118,10 +118,11 @@ Se você importar outro fundo durante Gaming, o vídeo anterior continua até o 
 - As preferências ficam em `%LOCALAPPDATA%\TuringScreen\interface.json`.
 - Fechar a janela encerra a execução que ela iniciou. A janela impede uma segunda execução simultânea.
 - A interface usa prata clara com fundo levemente quente, superfícies em relevo sem contornos e controles compactos. O vinil e o nome da faixa ocupam o centro da composição. Os acentos acompanham a capa do álbum; botões, modos e slider têm resposta suave ao mouse. As explicações aparecem em dicas, em vez de descrições permanentes.
-- O ícone do aplicativo é um toca-discos prateado com centro azul acinzentado, disponível em PNG e ICO em `assets/icons` e usado na janela e no cabeçalho.
+- O ícone do aplicativo é um toca-discos prateado com centro azul acinzentado, disponível em PNG e ICO em `assets/icons` e usado na janela, no cabeçalho e na barra de tarefas. A janela tem identificação própria como **Turing Vinyl**. Execute `python criar_atalho.py` para gerar **Turing Vinyl.lnk** com o mesmo nome, ícone e identidade; substitua o atalho antigo do Python por ele na barra de tarefas ou no dock.
 - O título, o artista e a playlist disponível ficam juntos. O nome da playlist usa o contexto já consultado pelo script.
 - O vinil externo e a capinha da interface acompanham o movimento da tela, com alvo de 60 FPS e agendamento pelo relógio. A capinha também acompanha o encolhimento durante a pausa. O cálculo da rotação usa um trabalhador local com apenas um pedido e um resultado recentes; cliques e sliders continuam na janela. Os controles reutilizam imagens e itens durante transições. Nos modos, o hover muda somente a cor do texto, sem sombra ou deslocamento.
-- O app usa a moldura nativa e não define políticas de acrílico ou material do Windows. O **Mica For Everyone** pode gerenciar essa moldura; o conteúdo permanece opaco e legível. Os antigos controles de acrílico e opacidade foram removidos. Para uma regra específica, a classe da janela é `TkTopLevel` (o processo é `python` ou `pythonw`, conforme a forma de iniciar). Use o material apenas na moldura e deixe **Extend Frame Into Client Area** e **Blur Behind** desligados para preservar o desenho do Tk. [Configuração oficial do Mica For Everyone](https://github.com/MicaForEveryone/MicaForEveryone/wiki/Config-File).
+- O app usa a moldura nativa. No Windows 11, a barra de título acompanha o branco suave da interface, com texto escuro. Não há controles de acrílico, opacidade ou transparência. Ferramentas externas podem substituir a aparência da barra; deixe **Extend Frame Into Client Area** e **Blur Behind** desligados no Mica For Everyone para preservar o desenho do Tk. [Configuração oficial do Mica For Everyone](https://github.com/MicaForEveryone/MicaForEveryone/wiki/Config-File).
+- Os controles do Spotify ficam abaixo das informações da faixa: aleatório, anterior, play/pause, próxima e repetição (desligada → fila → faixa). Usam a sessão do Spotify no Windows, fora da thread gráfica, e recebem avisos de mudança sem consultas adicionais à Web API ou nova autorização OAuth. Ações não disponibilizadas pelo Spotify ficam desativadas. Funcionam mesmo antes de iniciar a tela; a área principal mostra **Esperando por você…** até a exibição se conectar. Também controlam o Spotify nos modos Vídeo e Gaming, sem mudar o modo selecionado para a tela.
 - A tela principal mantém o disco grande à esquerda e as informações da faixa à direita.
 - **Fundo → Escolher vídeo** permite importar o fundo ocioso. O app faz a preparação em segundo plano, mostra o progresso e permite cancelar. **Padrão** volta ao `video_fundo.mp4` do projeto.
 - A interface usa Tkinter e Pillow, sem navegador embutido. As máscaras do glow são preparadas na abertura; a capa parada é reutilizada. A sincronização usa números enviados pelo próprio script, sem consultas extras ao Spotify.
@@ -155,7 +156,7 @@ python -m pip install --upgrade pip
 Instale as dependências do aplicativo:
 
 ```powershell
-python -m pip install Pillow pyusb pycryptodome libusb-package openrgb-python pycaw comtypes winrt-runtime winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Media.Control winrt-Windows.Storage.Streams
+python -m pip install Pillow pyusb pycryptodome libusb-package openrgb-python pycaw comtypes winrt-runtime winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Media winrt-Windows.Media.Control winrt-Windows.Storage.Streams
 python -m pip install -e .\turing-smart-screen-cli-main
 ```
 

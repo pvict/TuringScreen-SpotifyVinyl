@@ -113,11 +113,13 @@ Brightness is applied when you release the slider, avoiding repeated RGB updates
 
 The interface uses warm soft silver, borderless surfaces with subtle raised and inset shadows, and compact controls. The vinyl and track title take priority over decorative text. Accent colors follow the album, and buttons, mode selection and the slider respond smoothly to hover. Explanations appear in tooltips instead of permanent descriptions. Both the outer record and the artwork follow the display's motion, with a 60 FPS target and animation timing based on elapsed time. Stationary images and precomputed glow masks are reused. Motion comes from the script's existing state, with no additional Spotify API requests.
 
-The app icon is a silver turntable with a muted slate blue center, supplied as PNG and ICO in `assets/icons` and used in the window and header.
+The app icon is a silver turntable with a muted slate blue center, supplied as PNG and ICO in `assets/icons` and used in the window, header and taskbar. The window sets its own **Turing Vinyl** name and relaunch identity. Run `python criar_atalho.py` to create a local **Turing Vinyl.lnk** shortcut with the same icon and identity; replace an old Python shortcut in your taskbar or dock with this shortcut.
 
 Track title, artist and available playlist name are grouped together. The playlist uses the context the script already reads. Record rotation is calculated by a local worker with only the latest request and result retained. Controls reuse their canvas items and images during transitions; mode hover only fades the text toward the accent color, without shadows or movement.
 
-The app keeps its native window frame and does not set Windows acrylic or backdrop policies. **Mica For Everyone** can manage the frame; the Tk content remains opaque and readable. The acrylic toggle and opacity slider have been removed. A dedicated rule can target the `TkTopLevel` window class (`python` or `pythonw`, depending on how the app was started). Keep **Extend Frame Into Client Area** and **Blur Behind** off to preserve Tk rendering. [Official Mica For Everyone configuration](https://github.com/MicaForEveryone/MicaForEveryone/wiki/Config-File).
+The app keeps a native window frame. On Windows 11, the title bar matches the interface's warm white background, with dark title text. There are no acrylic, opacity or transparency controls. External window tools can override the title bar; keep **Extend Frame Into Client Area** and **Blur Behind** off in Mica For Everyone to preserve Tk rendering. [Official Mica For Everyone configuration](https://github.com/MicaForEveryone/MicaForEveryone/wiki/Config-File).
+
+Spotify controls sit below the track details: shuffle, previous, play/pause, next and repeat (off → queue → track). They use the Spotify desktop session exposed by Windows, run outside the UI thread and update through playback/session events. No extra Spotify Web API requests or OAuth scopes are needed. Unsupported controls are disabled. They can control Spotify before the screen is started; the main view shows **Esperando por você…** until the display connects. Controlling Spotify also works in Video and Gaming modes; it does not change the selected display mode.
 
 The main view keeps the large rotating record on the left and track details on the right.
 
@@ -153,7 +155,7 @@ python -m pip install --upgrade pip
 Install the application dependencies:
 
 ```powershell
-python -m pip install Pillow pyusb pycryptodome libusb-package openrgb-python pycaw comtypes winrt-runtime winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Media.Control winrt-Windows.Storage.Streams
+python -m pip install Pillow pyusb pycryptodome libusb-package openrgb-python pycaw comtypes winrt-runtime winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Media winrt-Windows.Media.Control winrt-Windows.Storage.Streams
 python -m pip install -e .\turing-smart-screen-cli-main
 ```
 

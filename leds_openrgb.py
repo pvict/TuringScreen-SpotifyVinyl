@@ -10,10 +10,11 @@ então o modo noite vale para os dois.
 Com música tocando, os LEDs seguem a cor da capa. Sem música, usam a cor do
 perfil PERFIL_OCIOSO do OpenRGB.
 
-Escritas gentis com o controlador da placa (ASRock B450M Steel Legend):
-  - reúne as zonas listadas em ZONAS em um envio por dispositivo por passo;
-    as demais conservam as cores informadas pelo OpenRGB;
-  - mantém uma pausa equivalente aos antigos envios separados;
+Envios espaçados ao controlador da placa (ASRock B450M Steel Legend):
+  - envia cada posição lógica alterada das zonas listadas em ZONAS;
+    as demais zonas não recebem comandos de cor;
+  - começa pelo header ARGB compartilhado e distribui as pausas entre envios;
+  - preserva o tempo previsto por etapa, sem acelerar para compensar atrasos;
   - o perfil é lido uma única vez e guardado em ARQUIVO_PERFIL; reconectar NÃO
     recarrega o perfil (load_profile mexe em todos os dispositivos). Apague o
     arquivo, ou use RELER_PERFIL = True, para ler de novo.
@@ -40,10 +41,11 @@ RELER_PERFIL = False            # True = ignora o cache e recarrega o perfil no 
 PERFIL_OCIOSO = 'purple rain'  # perfil do OpenRGB sem música; None = COR_PADRAO
 COR_PADRAO = (255, 255, 255)    # usada se o perfil não for encontrado
 # --- TRANSITION RESPOSTA RÁPIDA E FLUIDA ---
-FADE_PASSOS = 12        # Um meio-termo seguro para a ASRock
-FADE_INTERVALO = 0.0    # O intervalo por passo pode ser zero, pois a trava será por zona
-INTERVALO_ZONAS = 0.10  # 100ms entre gravações para reduzir a carga no controlador
+FADE_PASSOS = 12        # Mantém os passos e a curva da transição atual
+FADE_INTERVALO = 0.0    # As pausas são distribuídas dentro de cada etapa
+INTERVALO_ZONAS = 0.10  # Tempo previsto por zona, usado para manter a duração do fade
 INTERVALO_ADDRESSABLE_EXTRA = 0.20  # Limita a frequência de gravações no header ARGB durante fades
+PAUSA_LED_MIN = 0.020   # Pelo menos 20ms de pausa após cada comando individual
 CHECA_A_CADA = 0.05     # Resposta quase instantânea ao trocar de música
 ESPERA_ERRO = 10                 # segundos antes de tentar reconectar
 PROTOCOLO = 3                   # 3 evita a espera de ~10 s do pedido de plugins
@@ -250,7 +252,7 @@ def _misturar(a, b, t):
 
 
 def _enviar_etapa(zonas, cores, escrito, etapa, passos, parar, log):
-    """Um UPDATELEDS por placa; o driver ASRock já percorre todos os LEDs."""
+    """UPDATE_SINGLE_LED espaçados; evita o lote interno do driver Polychrome v2."""
     dispositivos = []
     for _chave_zona, dev, _zona in zonas:
         if not any(dev is existente for existente in dispositivos):
@@ -260,33 +262,55 @@ def _enviar_etapa(zonas, cores, escrito, etapa, passos, parar, log):
         alteradas = [(k, z) for k, z in selecionadas if escrito.get(k) != cores[k]]
         if not alteradas:
             continue
-        pacote = list(dev.colors)
-        if len(pacote) != len(dev.leds):
+        if len(dev.colors) != len(dev.leds):
             raise ValueError("OpenRGB: quantidade de cores da placa inconsistente")
+        pendentes = []
         offset = 0
         for zona in dev.zones:
             chave = _chave(dev, zona)
             quantidade = len(zona.leds)
+            if offset + quantidade > len(dev.leds):
+                raise ValueError("OpenRGB: mapa de zonas ultrapassa os LEDs da placa")
             if chave in cores:
                 if len(cores[chave]) != quantidade:
                     raise ValueError(f"OpenRGB: quantidade de cores inconsistente em {chave}")
-                pacote[offset:offset + quantidade] = [RGBColor(*c) for c in cores[chave]]
+                anterior = escrito.get(chave)
+                if anterior is not None and len(anterior) != quantidade:
+                    raise ValueError(f"OpenRGB: registro de cores inconsistente em {chave}")
+                for indice, cor in enumerate(cores[chave]):
+                    if anterior is None or anterior[indice] != cor:
+                        pendentes.append((zona.name, dev.leds[offset + indice], cor))
             offset += quantidade
-        if offset != len(pacote):
+        if offset != len(dev.leds):
             raise ValueError("OpenRGB: mapa de zonas não corresponde aos LEDs da placa")
+        if not pendentes:
+            continue
+
+        # Uma posição lógica do header aplica a cor a todos os acessórios ARGB.
+        # O SDK/driver faz esse mapeamento; não alteramos a contagem física de LEDs.
+        pendentes.sort(key=lambda envio: "addressable header" not in envio[0].lower())
+        tempo_etapa = INTERVALO_ZONAS * len(selecionadas)
+        if passos > 1 and any("addressable header" in z.name.lower() for _k, z in selecionadas):
+            tempo_etapa += INTERVALO_ADDRESSABLE_EXTRA
+        intervalo_led = max(PAUSA_LED_MIN, tempo_etapa / len(pendentes))
         resumo = {k: cores[k][0] if cores[k] else None for k, _z in selecionadas}
-        log(f"openrgb: envio único dispositivo={dev.name} leds={len(pacote)} cores={resumo} etapa={etapa}/{passos}")
+        log(f"openrgb: envio espaçado dispositivo={dev.name} leds={len(pendentes)} intervalo={intervalo_led:.3f}s pausa_min={PAUSA_LED_MIN:.3f}s cores={resumo} etapa={etapa}/{passos}")
         inicio_envio = time.monotonic()
-        dev.set_colors(pacote)
+        for _nome_zona, led, cor in pendentes:
+            if parar.is_set():
+                return True
+            inicio_led = time.monotonic()
+            # Mantém a leitura de estado do SDK após o comando. Ela não confirma
+            # a cor física, mas evita disparar uma fila de comandos sem retorno.
+            led.set_color(RGBColor(*cor))
+            # O tempo de resposta entra no orçamento da etapa. Se ele for alto,
+            # mantemos a pausa mínima e alongamos o fade, sem recuperar com rajadas.
+            espera = max(PAUSA_LED_MIN, intervalo_led - (time.monotonic() - inicio_led))
+            if parar.wait(espera):
+                return True
         for chave, _zona in selecionadas:
             escrito[chave] = list(cores[chave])
-        log(f"openrgb: envio único concluído etapa={etapa}/{passos} duração={time.monotonic() - inicio_envio:.3f}s")
-        # Mantém o ritmo anterior mesmo com apenas um pacote SDK.
-        intervalo = INTERVALO_ZONAS * len(selecionadas)
-        if passos > 1 and any("addressable header" in z.name.lower() for _k, z in selecionadas):
-            intervalo += INTERVALO_ADDRESSABLE_EXTRA
-        if parar.wait(intervalo):
-            return True
+        log(f"openrgb: envios espaçados concluídos etapa={etapa}/{passos} duração={time.monotonic() - inicio_envio:.3f}s (SDK; sem confirmação física)")
     return False
 
 

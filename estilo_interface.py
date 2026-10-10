@@ -365,6 +365,29 @@ def icone(nome, cor=TEXTO, lado=24):
         d.polygon([(10 * k, 8 * k), (16 * k, 12 * k), (10 * k, 16 * k)], fill=cor)
     elif nome == "play":
         d.polygon([(8 * k, 4 * k), (21 * k, 12 * k), (8 * k, 20 * k)], fill=cor)
+    elif nome == "pause":
+        for x in (7, 14):
+            d.rounded_rectangle((x * k, 5 * k, (x + 3) * k, 19 * k), radius=k, fill=cor)
+    elif nome in ("anterior", "proxima"):
+        if nome == "proxima":
+            d.polygon([(5 * k, 5 * k), (17 * k, 12 * k), (5 * k, 19 * k)], fill=cor)
+            linha([(19, 5), (19, 19)], 2)
+        else:
+            d.polygon([(19 * k, 5 * k), (7 * k, 12 * k), (19 * k, 19 * k)], fill=cor)
+            linha([(5, 5), (5, 19)], 2)
+    elif nome == "aleatorio":
+        linha([(3, 6), (6, 6), (17, 18), (21, 18)])
+        linha([(3, 18), (6, 18), (10, 14)])
+        linha([(14, 10), (17, 6), (21, 6)])
+        linha([(18, 3), (21, 6), (18, 9)])
+        linha([(18, 15), (21, 18), (18, 21)])
+    elif nome in ("repetir", "repetir_um"):
+        linha([(4, 10), (4, 8), (7, 5), (20, 5)])
+        linha([(17, 2), (20, 5), (17, 8)])
+        linha([(20, 14), (20, 16), (17, 19), (4, 19)])
+        linha([(7, 16), (4, 19), (7, 22)])
+        if nome == "repetir_um":
+            linha([(10, 11), (12, 9), (12, 15)], 1.5)
     elif nome == "stop":
         d.rounded_rectangle((6 * k, 6 * k, 18 * k, 18 * k), radius=3 * k, fill=cor)
     elif nome == "power":

@@ -1,6 +1,7 @@
 spotify_client_id.txt
 __pycache__/
 *.pyc
+/Turing Vinyl.lnk
 
 # Ambiente local, artefatos de compilação e backups
 /.venv/

@@ -4,7 +4,6 @@ Tkinter + Pillow, sem navegador embutido. Prévia pequena com alvo de 60 FPS.
 O script original roda em um processo separado, com comandos em pipes locais.
 """
 import base64
-import ctypes
 import io
 import json
 import math
@@ -21,7 +20,8 @@ from tkinter import filedialog
 
 from PIL import Image, ImageDraw, ImageFilter, ImageTk
 
-from aparencia_windows import preparar_janela
+from aparencia_windows import preparar_janela, preparar_identidade_processo
+from controles_spotify import ControlesSpotify
 from fundo_usuario import ConversorFundo
 from controle_interface import (PREFIXO, brilho_horario, carregar, salvar,
                                 reservar_execucao, liberar_execucao)
@@ -152,10 +152,11 @@ def disco_base():
 
 class Botao(CanvasSuave):
     def __init__(self, master, texto, comando, largura=150, altura=40,
-                 primario=False, fundo=FUNDO, simbolo=None, dica=""):
+                 primario=False, fundo=FUNDO, simbolo=None, dica="", midia=False):
         super().__init__(master, width=largura, height=altura, bg=fundo,
                          highlightthickness=0, bd=0, takefocus=True, cursor="hand2")
         self.texto, self.comando, self.primario = texto, comando, primario
+        self.midia = midia
         self.cor = PRATA
         self.simbolo, self.selecionado = simbolo, False
         self.ativo, self.hover = True, False
@@ -221,6 +222,8 @@ class Botao(CanvasSuave):
         self.alterar_imagem(self.face_item, superficie((w, h), preenchimento,
                                 raio=(w / 2 if not self.texto else 16), pressionado=self.selecionado))
         tinta = ("#ffffff" if self.primario else TEXTO) if self.ativo else SECUNDARIO
+        if self.midia and self.selecionado and self.ativo and not self.primario:
+            tinta = self.cor
         total = self.fonte.measure(self.texto) + (29 if self.simbolo and self.texto else 0)
         x = (w - total) / 2
         if self.simbolo:
@@ -234,6 +237,8 @@ class Botao(CanvasSuave):
             self.coords(self.rotulo_item, x, h / 2)
         self.itemconfigure(self.rotulo_item, text=self.texto, font=self.fonte, fill=tinta)
         self.itemconfigure(self.ponto_item, fill=self.cor, state="normal" if self.selecionado else "hidden")
+        if self.midia:
+            self.coords(self.ponto_item, w / 2 - 2, h - 11, w / 2 + 2, h - 7)
         self.itemconfigure(self.foco_item, fill=self.cor,
                             state="normal" if not self.selecionado and self.focus_get() is self else "hidden")
         self._ultima_pintura = (self.texto, self.ativo, self.cor, self.selecionado, self.simbolo, self.primario)
@@ -589,7 +594,10 @@ class Janela(tk.Tk):
         self.carregar_icone()
         self.protocol("WM_DELETE_WINDOW", self.fechar)
         self.config_usuario = carregar()
-        preparar_janela(self)
+        self.moldura_windows = None
+        self.controles_spotify = ControlesSpotify()
+        self.estado_controles_midia = {}
+        self.midia_ocupada = False
         self.conversor_fundo = ConversorFundo()
         self.fundo_painel_aberto, self.fundo_convertendo = False, False
         self.fundo_nome_em_preparo = ""
@@ -628,6 +636,7 @@ class Janela(tk.Tk):
         self.img_acento = ImageTk.PhotoImage(acento_vinil(self.cor_modo))
         self.acento_item = self.canvas.create_image(91, 69, image=self.img_acento, anchor="nw")
         self.desenhar()
+        self.after_idle(self.preparar_moldura)
         self.after(50, self.eventos)
         self.bind("<Escape>", lambda e: self.fechar_paineis())
 
@@ -651,6 +660,12 @@ class Janela(tk.Tk):
             # O controle da tela continua disponível se o recurso não for copiado.
             pass
 
+    def preparar_moldura(self):
+        if not self.encerrando:
+            self.moldura_windows = preparar_janela(
+                self, FUNDO, TEXTO, RAIZ / "assets" / "icons" / "turing-vinyl.ico",
+                RAIZ / "iniciar_interface.pyw")
+
     def desenhar(self):
         c = self.canvas
         if self.img_icone_header is not None:
@@ -665,9 +680,23 @@ class Janela(tk.Tk):
 
         self.disco_item = c.create_image(285, 263)
         self.hero_rotulo = self.texto(529, 171, "", self.f_pequena, SECUNDARIO)
-        self.faixa_texto = self.texto(526, 209, "Turing Vinyl", self.f_faixa, width=408)
+        self.faixa_texto = self.texto(526, 209, "Esperando por você…", self.f_faixa, width=408)
         self.artista_texto = self.texto(529, 304, "", self.f_sans, SECUNDARIO)
         self.playlist_texto = self.texto(529, 333, "", self.f_pequena, SECUNDARIO)
+        self.midia_botoes, self.midia_itens = {}, {}
+        for acao, simbolo, dica, x, lado in (
+                ("aleatorio", "aleatorio", "Aleatório", 529, 48),
+                ("anterior", "anterior", "Música anterior", 589, 48),
+                ("play_pause", "play", "Reproduzir", 649, 60),
+                ("proxima", "proxima", "Próxima música", 721, 48),
+                ("repetir", "repetir", "Repetição desligada", 781, 48)):
+            botao = Botao(self, "", lambda a=acao: self.acao_midia(a),
+                           largura=lado, altura=lado, primario=acao == "play_pause",
+                           simbolo=simbolo, dica=dica, midia=True)
+            botao.atualizar(ativo=False)
+            self.midia_botoes[acao] = botao
+            item = c.create_window(x, 331 + (60 - lado) / 2, window=botao, anchor="nw")
+            self.midia_itens[acao] = (item, x, lado)
         self.atualizar_disco()
         self.modo_dica = self.texto(944, 422, "", self.f_pequena, SECUNDARIO)
         c.itemconfigure(self.modo_dica, anchor="ne")
@@ -856,6 +885,8 @@ class Janela(tk.Tk):
             for botao in (self.auto, self.power, self.iniciar, self.fundo_botao,
                           self.gaming_botao):
                 botao.atualizar(cor=self.cor_modo)
+            for botao in self.midia_botoes.values():
+                botao.atualizar(cor=self.cor_modo)
             self.slider.atualizar(cor=self.cor_modo)
             if self.fundo_painel_aberto:
                 self.fundo_painel.atualizar()
@@ -1010,6 +1041,8 @@ class Janela(tk.Tk):
             self.motor.parar()
             self.iniciar.atualizar(texto="Encerrando…", ativo=False)
         else:
+            self.midia = None
+            self.atualizar_texto_midia()
             self.guardar()
             self.iniciando = True
             self.iniciar.atualizar(texto="Conectando…", ativo=False)
@@ -1030,12 +1063,14 @@ class Janela(tk.Tk):
         if self.encerrando:
             return
         self.eventos_fundo()
+        self.eventos_midia()
         try:
             while True:
                 tipo, dados = self.motor.eventos.get_nowait()
                 if tipo == "iniciado":
                     self.rodando, self.iniciando = True, False
                     self.iniciar.atualizar(texto="Parar", ativo=True, simbolo="stop", dica="Parar exibição")
+                    self.atualizar_texto_midia()
                 elif tipo in ("parado", "erro"):
                     self.rodando, self.iniciando = False, False
                     self._visual = {}
@@ -1043,11 +1078,58 @@ class Janela(tk.Tk):
                     self.canvas.itemconfigure(self.status_texto, text="Parada", fill=SECUNDARIO)
                     self.canvas.itemconfigure(self.status_ponto, fill="#89929f")
                     self.mensagem(dados or "", "#966022" if dados else SECUNDARIO)
+                    self.atualizar_texto_midia()
                 elif tipo == "estado":
                     self.atualizar_estado(dados)
         except queue.Empty:
             pass
         self.after(50, self.eventos)
+
+    def acao_midia(self, acao):
+        if self.midia_ocupada or self.encerrando:
+            return
+        if self.controles_spotify.enviar(acao):
+            self.midia_ocupada = True
+            self.atualizar_botoes_midia()
+        else:
+            self.mensagem("Os controles do Spotify estão indisponíveis.", "#966022")
+
+    def eventos_midia(self):
+        try:
+            while True:
+                dados = self.controles_spotify.eventos.get_nowait()
+                self.estado_controles_midia = dados
+                self.midia_ocupada = False
+                self.atualizar_botoes_midia()
+                if dados.get("erro"):
+                    self.mensagem(dados["erro"], "#966022")
+        except queue.Empty:
+            pass
+
+    def atualizar_botoes_midia(self):
+        dados = self.estado_controles_midia
+        disponivel = dados.get("disponivel", False) and not self.midia_ocupada
+        tocando = dados.get("tocando", False)
+        repeticao = dados.get("repeticao", 0)
+        for acao, botao in self.midia_botoes.items():
+            opcoes = {"ativo": disponivel and dados.get(acao, False), "cor": self.cor_modo}
+            if acao == "play_pause":
+                opcoes.update(simbolo="pause" if tocando else "play",
+                               dica="Pausar" if tocando else "Reproduzir")
+            elif acao == "aleatorio":
+                ligado = dados.get("aleatorio_ativo", False)
+                opcoes.update(selecionado=ligado,
+                               dica="Desativar aleatório" if ligado else "Ativar aleatório")
+            elif acao == "repetir":
+                opcoes.update(selecionado=repeticao != 0,
+                               simbolo="repetir_um" if repeticao == 1 else "repetir",
+                               dica={0: "Repetição desligada", 2: "Repetir fila", 1: "Repetir faixa"}.get(
+                                   repeticao, "Repetição"))
+            botao.atualizar(**opcoes)
+
+    def posicionar_controles_midia(self, y=331):
+        for item, x, lado in self.midia_itens.values():
+            self.canvas.coords(item, x, y + (60 - lado) / 2)
 
     def atualizar_estado(self, dados):
         if "visual" in dados:
@@ -1097,6 +1179,12 @@ class Janela(tk.Tk):
         musica = dados.get("musica")
         gaming = self.config_usuario.get("gaming", False)
         self.canvas.itemconfigure(self.playlist_texto, text="")
+        self.posicionar_controles_midia()
+        if not self.rodando or not dados.get("conectada"):
+            self.canvas.itemconfigure(self.hero_rotulo, text="")
+            self.canvas.itemconfigure(self.faixa_texto, text="Esperando por você…")
+            self.canvas.itemconfigure(self.artista_texto, text="")
+            return
         if gaming or self.config_usuario["modo"] == "video":
             self.canvas.itemconfigure(self.hero_rotulo, text="Gaming" if gaming else "Vídeo")
             self.canvas.itemconfigure(self.faixa_texto, text="Vídeo de fundo")
@@ -1119,15 +1207,17 @@ class Janela(tk.Tk):
                 self.canvas.coords(self.playlist_texto, 529, y_artista + 28)
                 self.canvas.itemconfigure(self.playlist_texto,
                                            text=self.encurtar(playlist, 408, self.f_pequena))
+            self.posicionar_controles_midia(max(331, y_artista + (56 if playlist else 32)))
         else:
             self.canvas.itemconfigure(self.hero_rotulo, text="")
-            self.canvas.itemconfigure(self.faixa_texto, text="Turing Vinyl")
+            self.canvas.itemconfigure(self.faixa_texto, text="Esperando por você…")
             self.canvas.itemconfigure(self.artista_texto, text="")
 
     def fechar(self):
         if self.encerrando:
             return
         self.encerrando = True
+        self.controles_spotify.fechar()
         self.relogio_animacao.fechar()
         self.rotacao_preview.fechar()
         self.conversor_fundo.cancelar()
@@ -1138,6 +1228,8 @@ class Janela(tk.Tk):
         def aguardar():
             proc = self.motor.proc
             if (proc is None or proc.poll() is not None) and not self.conversor_fundo.ocupado:
+                if self.moldura_windows is not None:
+                    self.moldura_windows.fechar()
                 self.destroy()
             elif time.monotonic() - inicio >= 10:
                 # Fechar o stdin aciona o mesmo encerramento se o comando se perdeu.
@@ -1159,15 +1251,7 @@ def main():
     except RuntimeError:
         return
     try:
-        if os.name == "nt":
-            try:
-                # Dá à janela sua própria identidade na barra de tarefas.
-                shell = ctypes.WinDLL("shell32")
-                shell.SetCurrentProcessExplicitAppUserModelID.argtypes = [ctypes.c_wchar_p]
-                shell.SetCurrentProcessExplicitAppUserModelID.restype = ctypes.c_long
-                shell.SetCurrentProcessExplicitAppUserModelID("TuringScreen.SpotifyVinyl.Interface")
-            except (OSError, AttributeError):
-                pass
+        preparar_identidade_processo()
         Janela().mainloop()
     finally:
         liberar_execucao(reserva)
