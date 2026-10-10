@@ -1,276 +1,114 @@
-<h1 align="center">🎵 Turing Vinyl - Spotify-powered </h1>
+<h1 align="center">Turing Vinyl</h1>
 
 <p align="center"><a href="README.pt-BR.md">Português</a> · <a href="README.md">English</a></p>
 
-<p align="center">
-  A music display for the Turing Smart Screen, with Spotify album art, playlist animations, vinyl transitions, and OpenRGB lighting.
-</p>
+A Windows desktop app that turns a compatible **Turing Smart Screen / water cooler LCD** into a Spotify vinyl display, with album artwork, smooth playback animations and **OpenRGB** lighting.
 
 <p align="center">
-  <a href="https://github.com/pvict/TuringScreen-SpotifyVinyl/stargazers"><img src="https://img.shields.io/github/stars/pvict/TuringScreen-SpotifyVinyl?color=7956D8&style=for-the-badge" alt="GitHub stars"></a>
-  <a href="https://github.com/pvict/TuringScreen-SpotifyVinyl/network/members"><img src="https://img.shields.io/github/forks/pvict/TuringScreen-SpotifyVinyl?color=7956D8&style=for-the-badge" alt="GitHub forks"></a>
-  <img src="https://img.shields.io/badge/Python-3.9%2B-7956D8?logo=python&logoColor=white&style=for-the-badge" alt="Python 3.9 or later">
-  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-7956D8?logo=windows&logoColor=white&style=for-the-badge" alt="Windows 10 or 11">
-  <img src="https://img.shields.io/badge/Animation-60%20FPS-7956D8?style=for-the-badge" alt="60 FPS target">
-  <img src="https://img.shields.io/badge/License-not%20specified-lightgrey?style=for-the-badge" alt="License not specified">
+  <img src="docs/images/turing-vinyl-interface.png" alt="Turing Vinyl desktop interface with a rotating record, track details, Spotify controls and brightness slider" width="860">
 </p>
 
-<p align="center">
-  <a href="#-features">Features</a> ·
-  <a href="#-installation">Installation</a> ·
-  <a href="#-configuration">Configuration</a> ·
-  <a href="#-running-the-project">Running the project</a> ·
-  <a href="#-troubleshooting">Troubleshooting</a>
-</p>
+The record slows down on pause and accelerates on resume. Track changes flip the artwork; playlist and **Up next** animations keep the same visual style. The interface accent follows the album cover.
 
----
-
-## :sparkles: About
-
-**Turing Vinyl** turns a USB Turing Smart Screen into an animated music display. It follows Windows playback, shows album art and track progress, highlights the current playlist, and pairs the experience with LEDs controlled through OpenRGB.
-
-> This is an evolving personal project built for a specific hardware setup. USB communication, OpenRGB, and Spotify integration depend on the equipment, drivers, and installed software versions.
-
-### Related project and compatibility
-
-[turing-smart-screen-python](https://github.com/mathoudebine/turing-smart-screen-python) is a popular, broader system-monitoring project and Python library for several small USB-C displays, including Turing Smart Screen models. Turing Vinyl has a different focus: a music-driven display experience. Its compatibility is validated separately, so support in one project does not guarantee support in the other.
-
-This repository uses the separate [Turing Smart Screen CLI](https://github.com/phstudy/turing-smart-screen-cli) by Study Hsueh for screen communication. Its MIT license is included in `turing-smart-screen-cli-main/LICENSE`. Turing Vinyl is an unofficial community project and is not affiliated with Turing, XuanFang, or their manufacturers.
-
-## :camera: Project in action
-
-<p align="center">
-  <img src="docs/images/turing-vinyl-setup.png" alt="Turing Vinyl showing the True Colors album art on the display, with synchronized PC lighting" width="720">
-</p>
-
-<p align="center"><em>The screen shows the current track while the computer lighting follows the experience.</em></p>
-
-<p align="center"><strong>▶ Full project demo (24 seconds)</strong></p>
+## Demo
 
 https://github.com/user-attachments/assets/f876053e-42a8-4e0f-b7f9-6a048da14437
 
-### What happens in the demo
+The 24-second demo shows pause/resume, background transitions, synchronized RGB and the playlist entrance.
 
-1. Pausing the music slows the vinyl down.
-2. The background video changes with a smooth RGB transition.
-3. Resuming playback speeds the vinyl back up.
-4. A playlist animation shows which playlist the track belongs to.
-
-## :star2: Features
-
-- Desktop controls with animated mode selection, manual/automatic brightness, and screen blanking.
-- Animations streamed to the display at a target of **60 frames per second**.
-- Album art, track information, and a music progress arc.
-- Animated transitions between tracks and album covers.
-- Vinyl rotation slows down on pause and accelerates when playback resumes.
-- A smooth RGB transition accompanies the change to the paused background video.
-- Playlist name and cover when the playlist changes, with periodic displays during playback.
-- An animation introduces the playlist currently playing.
-- Video backgrounds for playback and paused/idle states.
-- Screen brightness adjusted according to the schedule configured in the script.
-- LEDs synchronized with album-cover colors; while idle, the selected OpenRGB profile is used.
-- Runtime information recorded in `tela.log`.
-
-## :hammer_and_wrench: How it works
-
-| File | Responsibility |
-| --- | --- |
-| `tela_completa.py` | Coordinates the display, Windows media, volume, Spotify, and OpenRGB. This is the entry point. |
-| `fundo_usuario.py` | Prepares an idle video selected in the app and swaps its decoder during playback. |
-| `modo_gaming.py` | Prepares and streams the background at 30 FPS without live rendering or encoding. |
-| `ao_vivo.py` | Composes the visuals and encodes the live H.264 stream with FFmpeg. |
-| `animacao_capa.py` | Controls album-cover transitions. |
-| `spotify_playlist.py` | Retrieves playback context and playlist data through the Spotify API. |
-| `leds_openrgb.py` | Controls the selected RGB zones and applies album colors or the idle profile. |
-
-Spotify is queried every five seconds. When the playback context changes, the playlist name and artwork are updated; the screen shows the message and cover for five seconds, then repeats the display periodically. The LEDs continue to follow the album-cover color.
-
-Album artwork normally comes from Windows media. The script listens for artwork updates on the same track and briefly rechecks after a track change, so a temporary player thumbnail can be replaced without skipping the song. With the Spotify API configured, the existing playback poll also confirms the album image: title, artist and available album metadata must match before a result is accepted. Images are downloaded once per request and cached in memory; visually equivalent images keep the existing artwork and RGB colors. Changed or recovered artwork is recorded in `tela.log`. This does not record videos or save cover images to disk.
-
-### Desktop interface
-
-Stop any previous `tela_completa.py` instance with **Ctrl+C**. Double-click `iniciar_interface.pyw`, or run:
-
-```powershell
-python interface.py
-```
-
-Choose a mode and click **Iniciar** (Start). The controls are in Portuguese.
-
-| Mode | While playing | While paused |
-| --- | --- | --- |
-| Dinâmico (Dynamic) | Spotify vinyl, artwork, metadata, and animations. | The record and artwork decelerate smoothly as in Spotify-only mode before transitioning to the idle video and idle RGB profile. Resume uses the same artwork flip as a track change. |
-| Só Spotify (Spotify only) | The same vinyl experience. | Decelerate the record, fade the glow and filled progress arc, and smoothly shrink the artwork to 70%. Resume restores the artwork; the glow reaches full intensity when the artwork reaches full size, while the arc fills from zero to the current playback position. Keep the album's RGB color. |
-| Só vídeo (Video only) | Idle background video. | Idle background video and idle RGB profile. |
-
-**Gaming** is a separate toggle. It shows only the selected background video at **30 FPS**, without music artwork, metadata, playlist cards, or the volume overlay. The app's record preview stops, and the LEDs use the existing idle profile. Brightness and screen power remain available. The three mode cards select the mode to restore when Gaming is turned off, returning the normal stream to its 60 FPS target.
-
-The first activation prepares a cached H.264 version in `%LOCALAPPDATA%\TuringScreen\gaming`, using two encoding threads and below normal priority. Playback continues during preparation. Once ready, the file loops through the existing USB queue without live Pillow rendering, background decoding, or FFmpeg/NVENC encoding. Media and Spotify API polling are suspended while Gaming is active. The computer still sends the video over USB, so resource usage is not zero and savings depend on the system. Original files are preserved.
-
-Importing another background during Gaming keeps the previous video playing until the new one is ready. Preparation errors are shown in the interface and keep the previous display running; toggle Gaming off and on to retry. Switching streams may briefly interrupt playback while the display's decoder restarts.
-
-Brightness is applied when you release the slider, avoiding repeated RGB updates while dragging. **Auto** uses the existing time-based brightness schedule. The **power icon** turns off the backlight and sends a black frame; the LEDs continue following the selected mode. Closing the window stops the process it started.
-
-The interface uses warm soft silver, borderless surfaces with subtle raised and inset shadows, and compact controls. The vinyl and track title take priority over decorative text. Accent colors follow the album, and buttons, mode selection and the slider respond smoothly to hover. Explanations appear in tooltips instead of permanent descriptions. Both the outer record and the artwork follow the display's motion, with a 60 FPS target and animation timing based on elapsed time. Stationary images and precomputed glow masks are reused. Motion comes from the script's existing state, with no additional Spotify API requests.
-
-The app icon is a silver turntable with a muted slate blue center, supplied as PNG and ICO in `assets/icons` and used in the window, header and taskbar. The window sets its own **Turing Vinyl** name and relaunch identity. Run `python criar_atalho.py` to create a local **Turing Vinyl.lnk** shortcut with the same icon and identity; replace an old Python shortcut in your taskbar or dock with this shortcut.
-
-Track title, artist and available playlist name are grouped together. The playlist uses the context the script already reads. Record rotation is calculated by a local worker with only the latest request and result retained. Controls reuse their canvas items and images during transitions; mode hover only fades the text toward the accent color, without shadows or movement.
-
-The app keeps a native window frame. On Windows 11, the title bar matches the interface's warm white background, with dark title text. There are no acrylic, opacity or transparency controls. External window tools can override the title bar; keep **Extend Frame Into Client Area** and **Blur Behind** off in Mica For Everyone to preserve Tk rendering. [Official Mica For Everyone configuration](https://github.com/MicaForEveryone/MicaForEveryone/wiki/Config-File).
-
-Spotify controls sit below the track details: shuffle, previous, play/pause, next and repeat (off → queue → track). They use the Spotify desktop session exposed by Windows, run outside the UI thread and update through playback/session events. No extra Spotify Web API requests or OAuth scopes are needed. Unsupported controls are disabled. They can control Spotify before the screen is started; the main view shows **Esperando por você…** until the display connects. Controlling Spotify also works in Video and Gaming modes; it does not change the selected display mode.
-
-The main view keeps the large rotating record on the left and track details on the right.
-
-Open **Fundo → Escolher vídeo** (Background video → Choose video) to import an idle background. The app prepares it in the background with progress and cancellation. **Padrão** restores the project's `video_fundo.mp4`.
-
-Preferences are stored locally in `%LOCALAPPDATA%\TuringScreen\interface.json`. The interface uses Tkinter and Pillow, with no embedded browser. Fraunces and DM Sans from Google Fonts are bundled in `assets/fonts` with their SIL Open Font License files. Text uses cached FreeType rendering at 3× with Lanczos reduction and explicit variable font weights and optical sizes. The app declares Windows DPI awareness without changing system font settings.
-
-Direct execution with `python tela_completa.py` retains the original dynamic display and time-based brightness behavior.
-
-## :computer: Requirements
-
-- Windows 10 or 11.
-- A USB Turing Smart Screen compatible with the protocol used by this project.
-- Python 3.9 or later (Python 3.11 is a suitable starting point).
-- FFmpeg on `PATH`, with support for NVIDIA's `h264_nvenc` encoder.
-- An NVENC-compatible NVIDIA GPU and an installed driver.
-- OpenRGB installed and configured to control the motherboard/controller.
-- A Spotify account and an app created in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
-- The background video files expected by the script.
-
-> **About 60 FPS:** this is the stream's target, not a guarantee that every frame will reach the display. Results depend on the computer, FFmpeg/NVENC, the USB connection, and the display itself.
-
-## :electric_plug: Installation
-
-Open PowerShell in the project folder and create a virtual environment:
-
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-```
-
-Install the application dependencies:
-
-```powershell
-python -m pip install Pillow pyusb pycryptodome libusb-package openrgb-python pycaw comtypes winrt-runtime winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Media winrt-Windows.Media.Control winrt-Windows.Storage.Streams
-python -m pip install -e .\turing-smart-screen-cli-main
-```
-
-Install FFmpeg separately and check that PowerShell can find it:
-
-```powershell
-ffmpeg -encoders | Select-String h264_nvenc
-```
-
-If `h264_nvenc` does not appear, install an FFmpeg build with NVENC support and check your GPU driver.
-
-## :gear: Configuration
-
-### Spotify
-
-1. Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
-2. Add this redirect address in the app settings:
-
-   ```text
-   http://127.0.0.1:8765/callback
-   ```
-
-3. Create `spotify_client_id.txt` in the project folder and put only the **Client ID** on one line.
-4. On the first run, authorize the app in the browser window that opens.
-
-The project uses OAuth PKCE, so it does not need a Client Secret. The authorization token is stored locally and protected by Windows at `%LOCALAPPDATA%\TuringScreen\spotify_token.bin`.
-
-### OpenRGB
-
-1. Open OpenRGB and enable its SDK server at `127.0.0.1:6742`.
-2. If needed to detect or control the motherboard, run OpenRGB as administrator.
-3. Save an idle profile named `purple rain` in OpenRGB.
-4. In `leds_openrgb.py`, check the `DISPOSITIVOS` and `ZONAS` settings. The defaults look for an ASRock device and the Addressable Header, PCH, and IO Cover zones.
-
-The project stores a copy of the profile colors in `perfil_ocioso.json`. To reload the profile, delete this file before running the script or adjust `RELER_PERFIL` in `leds_openrgb.py`. Do not let another program control the same RGB zones at the same time.
-
-### Videos
-
-Keep these files next to `tela_completa.py`:
-
-| File | When it appears |
-| --- | --- |
-| `video_tela.mp4` | During playback |
-| `video_fundo.mp4` | While paused or idle |
-
-The converters produce 480 × 480 square videos at 30 FPS:
-
-- `converter.bat` creates `video_tela.mp4` from `entrada.mp4`. The source filename is currently fixed in the batch file; place the video under that name in the project folder.
-- `converter_fundo.bat` asks for the source video path and creates `video_fundo.mp4`.
-
-The desktop interface can import the idle video directly. It uses the same preparation as the background converter: 480 × 480, a centered crop, 30 FPS, silent H.264, and the existing saturation/contrast adjustments. FFmpeg and FFprobe must be in `PATH`, with the `libx264` encoder available.
-
-Conversion runs below normal priority on Windows, with two encoding threads and one filter thread. Prepared files are stored in `%LOCALAPPDATA%\TuringScreen\fundos`. The source video, default background, and previous imports are preserved, and the selection is saved for the next launch.
-
-While the display is running, a separate thread opens the new background and reads its first frame before the idle decoder is swapped. The next idle-video read uses the new background without restarting the script. **Só Spotify** keeps its vinyl background. Failed or cancelled imports keep the previous selection.
-
-The `.h264` files in the repository are kept alongside the video assets. Do not remove or ignore them without first confirming that the current workflow does not depend on them.
-
-## :rocket: Running the project
-
-With the display connected, the virtual environment activated, and the OpenRGB SDK server available, run:
-
-```powershell
-python tela_completa.py
-```
-
-To stop, press `Ctrl+C` in the terminal. The `tela.log` file records startup information, connections, and FFmpeg messages.
-
-## :art: Customization
-
-The main options are near the top of the scripts:
-
-- `tela_completa.py`: target FPS, dimensions, video files, brightness, and display elements.
-- `leds_openrgb.py`: device, zones, idle profile, saturation, and delay between writes.
-- `animacao_capa.py`: transition style and duration.
-- `spotify_playlist.py`: polling interval and OAuth integration.
-
-Make a backup before changing performance or RGB-write settings. The controller may behave differently depending on the motherboard, firmware, and number of zones.
-
-## :ambulance: Troubleshooting
-
-| Problem | What to check |
-| --- | --- |
-| The display is not found | USB cable, power, driver, model compatibility, and other programs using the device. |
-| FFmpeg is not found | FFmpeg installation and its `bin` folder on `PATH`; open a new terminal after changing `PATH`. |
-| `h264_nvenc` is missing | An FFmpeg build with NVENC support and the NVIDIA driver. |
-| The playlist does not appear | Client ID, Redirect URI, internet connection, and browser authorization. To authorize again, remove the local token. |
-| A Spotify logo appears instead of album artwork | Windows may have supplied a temporary player thumbnail. Artwork updates and the configured Spotify API recover the cover automatically; look for `capa: imagem atualizada pelo Windows` or `capa: recuperada pela API do Spotify` in `tela.log`. API recovery requires a connection and matching track metadata. |
-| OpenRGB will not connect | SDK server running at `127.0.0.1:6742` and no other process controlling the same zones. |
-| LEDs show incorrect colors | Stop the script, close other RGB controllers, restore the profile in OpenRGB, and check `tela.log`. |
-| Video stutters | Check GPU/CPU usage, NVENC support, and other video-encoding programs; the USB connection and display also matter. |
-
-## :lock: Privacy and credentials
-
-- Do not publish `spotify_client_id.txt`, tokens, logs, or personal data.
-- Do not add a Client Secret to the code: the integration uses PKCE and does not need one.
-- The integration queries the Spotify API for playback and playlist information.
-- OpenRGB is accessed locally through its SDK server at `127.0.0.1`.
-
-## :handshake: Contributions
-
-Suggestions and bug reports are welcome. When opening an issue, include the steps to reproduce the problem and, when useful, a relevant excerpt from `tela.log`—remove personal information or credentials first.
-
-To propose a change:
-
-1. Fork the project and create a branch for your change.
-2. Make small, descriptive commits.
-3. Open a pull request explaining what changed and how it was verified.
-
-## :scroll: License and credits
-
-This repository does not yet declare a license for its own scripts and media. Until a license is added, do not assume they may be reused or redistributed. The code in `turing-smart-screen-cli-main` has its own license; see `turing-smart-screen-cli-main/LICENSE`. Also check the rights for the included fonts, videos, images, and artwork.
-
-The Spotify integration must follow the [Spotify Platform Terms](https://developer.spotify.com/terms) and [Design Guidelines](https://developer.spotify.com/documentation/design). Album art and the presentation of music content may be subject to restrictions; check the current rules before distributing the project.
+<details>
+<summary>View the real setup</summary>
 
 <p align="center">
-  Made with 💜 by <a href="https://github.com/pvict">Paulo</a>
+  <img src="docs/images/turing-vinyl-setup.png" alt="Turing Vinyl running on a PC's water cooler display with synchronized lighting" width="650">
 </p>
+
+</details>
+
+## Install
+
+**Requirements:** Windows 10/11, Python **3.13** with Tkinter (the version used in this setup), a compatible USB display, and an **NVIDIA GPU with NVENC** and its driver. Install FFmpeg and FFprobe on `PATH`, with the `h264_nvenc` and `libx264` encoders.
+
+Compatibility with other displays and RGB controllers has not been validated. The current USB protocol uses device ID `1CBE:0088` and a 480 × 480 image.
+
+1. Download the repository using **Code → Download ZIP** and extract it.
+2. Open PowerShell in the extracted folder and run this one-time setup:
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install `
+  Pillow libusb-package openrgb-python pycaw comtypes winrt-runtime `
+  winrt-Windows.Foundation winrt-Windows.Foundation.Collections `
+  winrt-Windows.Media winrt-Windows.Media.Control winrt-Windows.Storage.Streams `
+  -e .\turing-smart-screen-cli-main
+.\.venv\Scripts\python.exe criar_atalho.py
+```
+
+3. Double-click the **Turing Vinyl** shortcut created in the project folder. You can pin it to the taskbar.
+
+Keep the extracted folder and its bundled videos in place: the shortcut uses this installation.
+
+## Use the app
+
+1. Connect the display by USB and open **Spotify for Windows**.
+2. Open **Turing Vinyl**, choose a mode and click **Iniciar** (Start).
+3. Use **Parar** (Stop) to end the display session. Closing the app also ends its session.
+
+The interface labels are currently in Portuguese.
+
+| Mode | Display behavior |
+| --- | --- |
+| **Dinâmico** | Vinyl while music plays; background video while paused or idle. |
+| **Spotify** | Vinyl stays on screen. On pause, it stops smoothly, the artwork shrinks and the glow/progress fade. |
+| **Vídeo** | Background video only. |
+| **Gaming** | Separate toggle: loops a prepared background at 30 FPS to reduce processing, without music overlays. Turning it off restores the selected mode. |
+
+- **Brilho:** adjust brightness, use **Auto** for the time-based schedule or the power button to turn off the display. LEDs continue following the mode.
+- **Playback:** shuffle, previous, play/pause, next and repeat below the track details. Controls depend on what Spotify exposes to Windows.
+- **Fundo → Escolher vídeo:** choose your own background. The app converts it automatically, shows progress and saves the selection. **Padrão** restores the bundled video.
+
+<details>
+<summary>Screenshot: choosing a background</summary>
+
+<p align="center">
+  <img src="docs/images/turing-vinyl-background.png" alt="Background panel with Choose video, Default and a conversion progress bar" width="860">
+</p>
+
+</details>
+
+## Optional integrations
+
+### Playlist and Up next
+
+Basic artwork, track details and playback controls use Windows media information. To enable playlist artwork and **Up next**:
+
+1. Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
+2. Set the Redirect URI to `http://127.0.0.1:8765/callback`.
+3. Create `spotify_client_id.txt` in the project folder containing only the **Client ID**.
+4. Click **Iniciar** in Turing Vinyl and authorize access in the browser when prompted.
+
+No Client Secret is needed. Playlist cards last **5 seconds**; Up next appears about **22 seconds before the end**, for **7 seconds**, when Spotify returns the next track.
+
+### RGB lighting
+
+Enable the **OpenRGB SDK server** at `127.0.0.1:6742`. The current preset controls the **ASRock B450M Steel Legend** zones Addressable Header, PCH and IO Cover. During music, LEDs follow the album color; the idle profile is named `purple rain`.
+
+Other controllers need their own configuration; RGB device selection is not yet available in the interface. Avoid having another RGB program control the same device simultaneously.
+
+## Need help?
+
+| Problem | Check |
+| --- | --- |
+| Nothing appears after **Iniciar** | USB connection, compatible display, FFmpeg/NVENC and whether another app is using the screen. |
+| Playlist / Up next is missing | Client ID, Redirect URI, browser authorization and internet connection. |
+| Playback buttons are disabled | Open Spotify for Windows and start a track so its media session is available. |
+| RGB does not respond | Motherboard detection in OpenRGB, SDK server and the supported preset. |
+
+For a bug report, include the time, steps and a relevant excerpt from `tela.log` in the project folder, removing personal information. [Open an issue](https://github.com/pvict/TuringScreen-SpotifyVinyl/issues).
+
+## Credits and license
+
+USB communication: [Turing Smart Screen CLI](https://github.com/phstudy/turing-smart-screen-cli), with its [MIT license](turing-smart-screen-cli-main/LICENSE). Fonts: Fraunces and DM Sans, bundled under OFL. Another community project for these displays: [turing-smart-screen-python](https://github.com/mathoudebine/turing-smart-screen-python).
+
+This repository has not yet declared a license for its own code and media. Turing Vinyl is an unofficial project by [Paulo](https://github.com/pvict).
