@@ -15,14 +15,13 @@ from pathlib import Path
 
 MODOS = ("dinamico", "spotify", "video")
 PADRAO = {"modo": "dinamico", "brilho": None, "tela_ligada": True,
-          "acrilico": True, "opacidade_fundo": 64,
-          "video_ocioso": None, "video_ocioso_nome": ""}
+          "video_ocioso": None, "video_ocioso_nome": "", "gaming": False}
 ARQUIVO = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "TuringScreen" / "interface.json"
 PREFIXO = "@TURING_UI@"
 
 
 def validar(dados, anterior=None):
-    config = dict(anterior or PADRAO)
+    config = {k: v for k, v in (anterior or PADRAO).items() if k in PADRAO}
     if not isinstance(dados, dict):
         return config
     if dados.get("modo") in MODOS:
@@ -33,10 +32,8 @@ def validar(dados, anterior=None):
             config["brilho"] = valor
     if type(dados.get("tela_ligada")) is bool:
         config["tela_ligada"] = dados["tela_ligada"]
-    if type(dados.get("acrilico")) is bool:
-        config["acrilico"] = dados["acrilico"]
-    if type(dados.get("opacidade_fundo")) is int:
-        config["opacidade_fundo"] = min(100, max(0, dados["opacidade_fundo"]))
+    if type(dados.get("gaming")) is bool:
+        config["gaming"] = dados["gaming"]
     if "video_ocioso" in dados:
         caminho = dados["video_ocioso"]
         if caminho is None or (isinstance(caminho, str) and 0 < len(caminho) <= 2048
@@ -71,6 +68,10 @@ class Controles:
         self.interface = interface
         self.config = carregar() if interface else dict(PADRAO)
         self.revisao = 0
+        self.gaming_ativo = False  # só muda depois de trocar o fluxo da tela
+
+    def modo_efetivo(self):
+        return "video" if self.gaming_ativo else self.config["modo"]
 
     def aplicar(self, dados):
         novo = validar(dados, self.config)
@@ -101,7 +102,7 @@ def iniciar_ponte(controles, estado, parar, log):
                         return
                     if comando.get("acao") == "configurar":
                         controles.aplicar(comando.get("config"))
-                        estado["modo_exibicao"] = controles.config["modo"]
+                        estado["modo_exibicao"] = controles.modo_efetivo()
                 except (ValueError, TypeError):
                     continue
         finally:
@@ -117,6 +118,8 @@ def iniciar_ponte(controles, estado, parar, log):
             midia = snap if snap.get("musica") else (snap.get("ultima_midia") or {})
             visual = snap.get("visual_disco")
             capa = visual.get("capa") if visual and visual.get("visivel") else midia.get("capa")
+            if controles.gaming_ativo:
+                midia, visual, capa = {}, None, None
             agora = time.monotonic()
             pacote = {}
             if agora >= proximo_estado or capa is not ultima_capa:
@@ -125,9 +128,13 @@ def iniciar_ponte(controles, estado, parar, log):
                     config=controles.config, brilho_atual=controles.brilho(),
                     conectada=snap.get("tela_conectada", False),
                     musica=midia.get("musica"), tocando=snap.get("tocando", False),
+                    playlist_nome=snap.get("playlist_nome"),
                     cor=midia.get("cor_viva"), erro=snap.get("erro_interface", ""),
                     fundo_ocioso_ativo=snap.get("fundo_ocioso_ativo"),
                     erro_fundo=snap.get("erro_fundo", ""),
+                    gaming_ativo=controles.gaming_ativo,
+                    gaming_preparando=snap.get("gaming_preparando", False),
+                    erro_gaming=snap.get("erro_gaming", ""),
                 )
                 if capa is not ultima_capa:
                     ultima_capa = capa
@@ -137,11 +144,11 @@ def iniciar_ponte(controles, estado, parar, log):
                         capa.resize((160, 160)).save(buffer, format="PNG")
                         pacote["capa"] = base64.b64encode(buffer.getvalue()).decode("ascii")
             if visual:
-                chave = tuple(visual[k] for k in (
+                chave = tuple(visual.get(k) for k in (
                     "angulo", "velocidade", "angulo_disco", "velocidade_disco", "escala", "visivel"))
                 if chave != ultimo_visual or pacote:
                     ultimo_visual = chave
-                    pacote["visual"] = {k: visual[k] for k in (
+                    pacote["visual"] = {k: visual.get(k) for k in (
                         "angulo", "velocidade", "angulo_disco", "velocidade_disco",
                         "escala", "visivel", "instante")}
             if not pacote:

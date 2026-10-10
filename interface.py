@@ -17,27 +17,28 @@ import time
 import tkinter as tk
 from collections import deque
 from pathlib import Path
-from tkinter import font as tkfont
 from tkinter import filedialog
 
 from PIL import Image, ImageDraw, ImageFilter, ImageTk
 
-from aparencia_windows import AcrilicoWindows
+from aparencia_windows import preparar_janela
 from fundo_usuario import ConversorFundo
 from controle_interface import (PREFIXO, brilho_horario, carregar, salvar,
                                 reservar_execucao, liberar_execucao)
+from estilo_interface import (CanvasSuave, FonteInterface, Dica, configurar_dpi,
+                               superficie, icone, limitar_linhas, texto_suave,
+                               RotacaoPreview, RelogioAnimacaoWindows)
 
 RAIZ = Path(__file__).resolve().parent
-FUNDO = "#17191d"
-CARTAO = "#24272d"
-BORDA = "#464b55"
-TEXTO = "#f1f3f6"
-SECUNDARIO = "#adb3bd"
-PRATA = "#d4d8df"
+FUNDO = "#e9e9e5"
+CARTAO = FUNDO
+TEXTO = "#303238"
+SECUNDARIO = "#696c73"
+PRATA = "#707b89"
 MODOS = [
-    ("dinamico", "Dinâmico", "Spotify + vídeo de fundo", PRATA),
-    ("spotify", "Só Spotify", "O vinil continua aqui", "#c6cbd4"),
-    ("video", "Só vídeo", "Seu fundo, sempre", "#bdc5d0"),
+    ("dinamico", "Dinâmico", "Spotify durante a música; vídeo durante a pausa.", PRATA),
+    ("spotify", "Spotify", "Só Spotify. O vinil permanece durante a pausa.", "#717b87"),
+    ("video", "Vídeo", "Só o vídeo de fundo, sem informações da música.", "#737c87"),
 ]
 SEM_JANELA = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 UI_FPS = 60
@@ -51,6 +52,12 @@ def proximo_quadro(widget, inicio, callback):
     return widget.after(max(1, espera), callback)
 
 
+def precisao_animacao(widget, tipo, ativo):
+    relogio = getattr(widget.winfo_toplevel(), "relogio_animacao", None)
+    if relogio is not None:
+        relogio.marcar((id(widget), tipo), ativo)
+
+
 def rgb(cor):
     return tuple(int(cor[i:i + 2], 16) for i in (1, 3, 5))
 
@@ -60,11 +67,11 @@ def misturar(a, b, t):
 
 
 def cor_album(cor):
-    """O mesmo matiz do álbum, clareado para os controles terem contraste."""
+    """Mantém o matiz do álbum, com contraste sobre a superfície clara."""
     canais = tuple(max(0, min(255, round(c))) for c in cor[:3])
-    ganho = max(1.0, 165 / max(max(canais), 1))
+    ganho = min(1.0, 150 / max(max(canais), 1))
     acento = "#%02x%02x%02x" % tuple(min(255, round(c * ganho)) for c in canais)
-    return misturar(acento, "#f8f9fb", 0.23)
+    return misturar(acento, "#59616e", 0.18)
 
 
 def animar_hover(widget, valor):
@@ -74,29 +81,17 @@ def animar_hover(widget, valor):
     widget.hover_alvo = bool(valor)
     origem = widget.hover_t
     inicio = time.monotonic()
+    precisao_animacao(widget, "hover", True)
 
     def passo():
-        t = min(1.0, (time.monotonic() - inicio) / 0.15)
+        t = min(1.0, (time.monotonic() - inicio) / 0.26)
         s = t * t * (3 - 2 * t)
         widget.hover_t = origem + (float(valor) - origem) * s
         widget.desenhar()
         widget.hover_job = proximo_quadro(widget, inicio, passo) if t < 1 else None
+        if t >= 1:
+            precisao_animacao(widget, "hover", False)
     passo()
-
-
-def arredondar(canvas, x1, y1, x2, y2, raio=18, **opcoes):
-    pontos = [x1 + raio, y1, x2 - raio, y1, x2, y1, x2, y1 + raio,
-              x2, y2 - raio, x2, y2, x2 - raio, y2, x1 + raio, y2,
-              x1, y2, x1, y2 - raio, x1, y1 + raio, x1, y1]
-    return canvas.create_polygon(pontos, smooth=True, splinesteps=24, **opcoes)
-
-
-def registrar_fontes():
-    if os.name == "nt":
-        gdi = ctypes.WinDLL("gdi32")
-        gdi.AddFontResourceExW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint, ctypes.c_void_p]
-        for arquivo in (RAIZ / "assets" / "fonts").glob("*.ttf"):
-            gdi.AddFontResourceExW(str(arquivo), 0x10, None)
 
 
 def halo(cor, tamanho=(330, 180), intensidade=75):
@@ -106,66 +101,67 @@ def halo(cor, tamanho=(330, 180), intensidade=75):
     return img.filter(ImageFilter.GaussianBlur(24))
 
 
-_MASCARAS_FUNDO = None
+_BASES_FUNDO = {}
+_MASCARA_ACENTO = None
 
 
-def fundo_janela(cor=PRATA, acrilico=False):
-    global _MASCARAS_FUNDO
-    if _MASCARAS_FUNDO is None:
-        luz = Image.new("L", (1000, 720))
-        d = ImageDraw.Draw(luz)
-        d.ellipse((490, -240, 1140, 360), fill=26)
-        d.ellipse((-210, 450, 410, 1050), fill=15)
-        brilho = Image.new("L", luz.size)
-        ImageDraw.Draw(brilho).ellipse((570, 112, 943, 320), fill=42)
-        _MASCARAS_FUNDO = (luz.filter(ImageFilter.GaussianBlur(65)),
-                           brilho.filter(ImageFilter.GaussianBlur(43)))
-    img = Image.new("RGBA", (1000, 720), "#000000" if acrilico else FUNDO)
-    if not acrilico:
-        luz = Image.new("RGBA", img.size, cor)
-        luz.putalpha(_MASCARAS_FUNDO[0])
-        img = Image.alpha_composite(img, luz)
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle((30, 92, 970, 322), 26,
-                        fill="#000000" if acrilico else misturar(FUNDO, cor, 0.10),
-                        outline=misturar(FUNDO, cor, 0.25))
-    if not acrilico:
-        brilho = Image.new("RGBA", img.size, cor)
-        brilho.putalpha(_MASCARAS_FUNDO[1])
-        img = Image.alpha_composite(img, brilho)
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle((30, 508, 970, 643), 24,
-                        fill="#000000" if acrilico else CARTAO, outline=BORDA)
+def fundo_janela(cor=PRATA):
+    global _MASCARA_ACENTO
+    if "solido" not in _BASES_FUNDO:
+        img = Image.new("RGBA", (1000, 720), FUNDO)
+        img.alpha_composite(superficie((348, 348), "#e4e5e1", raio=174, pressionado=True), (111, 89))
+        _BASES_FUNDO["solido"] = img
+    if _MASCARA_ACENTO is None:
+        mask = Image.new("L", (1000, 720))
+        ImageDraw.Draw(mask).ellipse((164, 142, 406, 384), fill=25)
+        _MASCARA_ACENTO = mask.filter(ImageFilter.GaussianBlur(37))
+    if cor is None:
+        return _BASES_FUNDO["solido"].copy()
+    acento = Image.new("RGBA", (1000, 720), cor)
+    acento.putalpha(_MASCARA_ACENTO)
+    return Image.alpha_composite(_BASES_FUNDO["solido"], acento)
+
+
+def acento_vinil(cor):
+    # A transição atualiza apenas esta região, não um bitmap de toda a janela.
+    img = Image.new("RGBA", (388, 388), cor)
+    img.putalpha(_MASCARA_ACENTO.crop((91, 69, 479, 457)))
     return img
 
 
 def disco_base():
-    img = Image.new("RGBA", (270, 270))
+    # O desenho fixo é suavizado uma vez; a rotação continua trabalhando em 270 px.
+    s = 3
+    img = Image.new("RGBA", (270 * s, 270 * s))
     d = ImageDraw.Draw(img)
-    d.ellipse((8, 8, 262, 262), fill="#08090c", outline="#7c8797", width=2)
+    d.ellipse((8 * s, 8 * s, 262 * s, 262 * s), fill="#141516", outline="#545b64", width=s)
     for r in range(121, 59, -2):
-        cor = (25 + (r % 6), 27 + (r % 8), 31 + (r % 5), 255)
-        d.ellipse((135 - r, 135 - r, 135 + r, 135 + r), outline=cor)
+        cor = (26, 27, 29, 255)
+        d.ellipse(tuple(n * s for n in (135 - r, 135 - r, 135 + r, 135 + r)), outline=cor, width=s)
     reflexo = Image.new("RGBA", img.size)
     rd = ImageDraw.Draw(reflexo)
     for desloc in range(38):
         alfa = round(30 * (1 - desloc / 38))
-        rd.pieslice((14, 14, 256, 256), 210 + desloc, 226 + desloc, fill=(205, 216, 232, alfa))
-        rd.pieslice((14, 14, 256, 256), 30 + desloc, 46 + desloc, fill=(205, 216, 232, alfa))
-    img = Image.alpha_composite(img, reflexo.filter(ImageFilter.GaussianBlur(3)))
-    return img
+        rd.pieslice((14 * s, 14 * s, 256 * s, 256 * s), 210 + desloc, 226 + desloc,
+                    fill=(218, 220, 218, alfa))
+        rd.pieslice((14 * s, 14 * s, 256 * s, 256 * s), 30 + desloc, 46 + desloc,
+                    fill=(218, 220, 218, alfa))
+    img = Image.alpha_composite(img, reflexo.filter(ImageFilter.GaussianBlur(3 * s)))
+    return img.resize((270, 270), Image.Resampling.LANCZOS)
 
 
-class Botao(tk.Canvas):
+class Botao(CanvasSuave):
     def __init__(self, master, texto, comando, largura=150, altura=40,
-                 primario=False, fundo=FUNDO):
+                 primario=False, fundo=FUNDO, simbolo=None, dica=""):
         super().__init__(master, width=largura, height=altura, bg=fundo,
                          highlightthickness=0, bd=0, takefocus=True, cursor="hand2")
         self.texto, self.comando, self.primario = texto, comando, primario
         self.cor = PRATA
+        self.simbolo, self.selecionado = simbolo, False
         self.ativo, self.hover = True, False
         self.hover_t, self.hover_job = 0.0, None
-        self.fonte = master.f_sans if hasattr(master, "f_sans") else ("DM Sans", 11)
+        self.fonte = master.f_sans if hasattr(master, "f_sans") else FonteInterface()
+        self._ultima_pintura = None
         self.bind("<Button-1>", lambda e: self.acionar())
         self.bind("<Return>", lambda e: self.acionar())
         self.bind("<space>", lambda e: self.acionar())
@@ -173,6 +169,7 @@ class Botao(tk.Canvas):
         self.bind("<Leave>", lambda e: self._hover(False))
         self.bind("<FocusIn>", lambda e: self.desenhar())
         self.bind("<FocusOut>", lambda e: self.desenhar())
+        self.dica = Dica(self, dica)
         self.desenhar()
 
     def _hover(self, valor):
@@ -185,79 +182,121 @@ class Botao(tk.Canvas):
             self.comando()
         return "break"
 
-    def atualizar(self, texto=None, ativo=None, cor=None):
+    def atualizar(self, texto=None, ativo=None, cor=None, selecionado=None, simbolo=None, dica=None):
         if texto is not None:
             self.texto = texto
         if ativo is not None:
             self.ativo = ativo
         if cor is not None:
             self.cor = cor
-        self.desenhar()
+        if selecionado is not None:
+            self.selecionado = selecionado
+        if simbolo is not None:
+            self.simbolo = simbolo
+        if dica is not None:
+            self.dica.texto = dica
+        chave = (self.texto, self.ativo, self.cor, self.selecionado, self.simbolo, self.primario)
+        if chave != self._ultima_pintura:
+            self.desenhar()
 
     def desenhar(self):
-        self.delete("all")
         w, h = int(self["width"]), int(self["height"])
-        preenchimento = (misturar(self.cor, "#ffffff", self.hover_t * 0.12) if self.primario
-                         else misturar("#30343b", self.cor, self.hover_t * 0.12))
+        preenchimento = (misturar("#33373e", self.cor, 0.28) if self.primario else
+                         misturar(FUNDO, self.cor, 0.11) if self.selecionado else
+                         misturar(FUNDO, "#ffffff", self.hover_t * 0.25))
         if not self.ativo:
-            preenchimento = "#292d34"
-        borda = self.cor if self.focus_get() is self else (
-            preenchimento if self.primario else misturar(BORDA, self.cor, self.hover_t * 0.5))
-        arredondar(self, 1, 1, w - 1, h - 1, 13, fill=preenchimento, outline=borda)
-        self.create_text(w / 2, h / 2 - 1 - self.hover_t, text=self.texto, font=self.fonte,
-                         fill=("#191c22" if self.primario else TEXTO) if self.ativo else SECUNDARIO)
+            preenchimento = FUNDO
+        # Mantém os itens do Canvas. Mover o mouse não destrói imagens ou letras.
+        if not hasattr(self, "face_item"):
+            vazio = Image.new("RGBA", (1, 1))
+            self.face_item = self.imagem(0, 0, vazio, anchor="nw")
+            self.icone_item = self.imagem(w / 2, h / 2, vazio)
+            self.rotulo_item = self.create_text(0, h / 2, text="", font=self.fonte, anchor="w")
+            self.ponto_item = self.create_oval(w - 22, h / 2 - 2, w - 18, h / 2 + 2,
+                                               outline="", state="hidden")
+            self.foco_item = self.create_line(w / 2 - 7, h - 12, w / 2 + 7, h - 12,
+                                               width=2, capstyle=tk.ROUND, state="hidden")
+        if self.ativo:
+            preenchimento = misturar(preenchimento, "#ffffff", round(self.hover_t * 12) / 12 * 0.12)
+        self.alterar_imagem(self.face_item, superficie((w, h), preenchimento,
+                                raio=(w / 2 if not self.texto else 16), pressionado=self.selecionado))
+        tinta = ("#ffffff" if self.primario else TEXTO) if self.ativo else SECUNDARIO
+        total = self.fonte.measure(self.texto) + (29 if self.simbolo and self.texto else 0)
+        x = (w - total) / 2
+        if self.simbolo:
+            self.coords(self.icone_item, x + 10 if self.texto else w / 2, h / 2)
+            self.alterar_imagem(self.icone_item, icone(self.simbolo, tinta, 20))
+            self.itemconfigure(self.icone_item, state="normal")
+            x += 29
+        else:
+            self.itemconfigure(self.icone_item, state="hidden")
+        if self.texto:
+            self.coords(self.rotulo_item, x, h / 2)
+        self.itemconfigure(self.rotulo_item, text=self.texto, font=self.fonte, fill=tinta)
+        self.itemconfigure(self.ponto_item, fill=self.cor, state="normal" if self.selecionado else "hidden")
+        self.itemconfigure(self.foco_item, fill=self.cor,
+                            state="normal" if not self.selecionado and self.focus_get() is self else "hidden")
+        self._ultima_pintura = (self.texto, self.ativo, self.cor, self.selecionado, self.simbolo, self.primario)
 
 
-class Seletor(tk.Canvas):
+class Seletor(CanvasSuave):
     def __init__(self, master, selecionado, comando, fonte, fonte_pequena):
-        super().__init__(master, width=940, height=115, bg=FUNDO,
+        super().__init__(master, width=912, height=92, bg=FUNDO,
                          highlightthickness=0, takefocus=True, cursor="hand2")
         self.comando, self.fonte, self.fonte_pequena = comando, fonte, fonte_pequena
         self.indice = next(i for i, m in enumerate(MODOS) if m[0] == selecionado)
-        self.x = self.indice * 306 + 12
+        self.x = self.indice * 296 + 12
         self.cor = MODOS[self.indice][3]
-        self.mascara_halo = halo("#ffffff", (340, 124), 90).getchannel("A")
-        self.halo_atual = Image.new("RGBA", self.mascara_halo.size, self.cor)
-        self.halo_atual.putalpha(self.mascara_halo)
         self.hover_indice, self.hover_t, self.hover_job = None, 0.0, None
         self.hover_alvo = False
+        self.hover_valores = [0.0, 0.0, 0.0]
         self.job = None
-        # Preserva a forma do símbolo; aplica a mesma cor dos demais ícones.
-        # A máscara só é lida ao abrir; a imagem é refeita apenas se a cor mudar.
-        with Image.open(RAIZ / "assets" / "icons" / "spotify-white.png") as imagem:
-            self.mascara_spotify = imagem.convert("RGBA").resize(
-                (24, 24), Image.Resampling.LANCZOS).getchannel("A")
-        self.cor_spotify, self.foto_spotify = None, None
-        self.onda = tuple((24 * i / 40, 55 - 8 * math.sin(2 * math.pi * i / 40))
-                          for i in range(41))
         self.bind("<Button-1>", self.clicar)
         self.bind("<Motion>", self.mover_mouse)
-        self.bind("<Leave>", lambda e: animar_hover(self, False))
+        self.bind("<Leave>", lambda e: self.animar_realce(None))
         self.bind("<Left>", lambda e: self.escolher(max(0, self.indice - 1)))
         self.bind("<Right>", lambda e: self.escolher(min(2, self.indice + 1)))
         self.bind("<Home>", lambda e: self.escolher(0))
         self.bind("<End>", lambda e: self.escolher(2))
         self.bind("<FocusIn>", lambda e: self.desenhar())
         self.bind("<FocusOut>", lambda e: self.desenhar())
+        self.dica = Dica(self, MODOS[self.indice][2])
         self.desenhar()
 
     def clicar(self, e):
         self.focus_set()
-        self.escolher(max(0, min(2, int((e.x - 10) / 306))))
+        self.escolher(max(0, min(2, int((e.x - 12) / 296))))
 
     def mover_mouse(self, e):
-        indice = max(0, min(2, int((e.x - 10) / 306)))
+        indice = max(0, min(2, int((e.x - 12) / 296)))
         if indice != self.hover_indice or not self.hover_alvo:
-            self.hover_indice = indice
-            self.hover_t = 0.0
-            animar_hover(self, True)
+            self.dica.texto = ("Modo retomado ao sair de Gaming." if
+                               self.master.config_usuario.get("gaming") else MODOS[indice][2])
+            self.dica.agendar()
+            self.animar_realce(indice)
+
+    def animar_realce(self, indice):
+        if self.hover_job is not None:
+            self.after_cancel(self.hover_job)
+        self.hover_indice, self.hover_alvo = indice, indice is not None
+        origem = list(self.hover_valores)
+        inicio = time.monotonic()
+        precisao_animacao(self, "hover", True)
+
+        def passo():
+            t = min(1.0, (time.monotonic() - inicio) / 0.26)
+            s = t * t * (3 - 2 * t)
+            self.hover_valores = [v + (float(i == indice) - v) * s for i, v in enumerate(origem)]
+            self.desenhar()
+            self.hover_job = proximo_quadro(self, inicio, passo) if t < 1 else None
+            if t >= 1:
+                precisao_animacao(self, "hover", False)
+        passo()
 
     def atualizar_cor(self, cor):
         if cor != self.cor:
             self.cor = cor
-            self.halo_atual = Image.new("RGBA", self.mascara_halo.size, cor)
-            self.halo_atual.putalpha(self.mascara_halo)
-        self.desenhar()
+            self.desenhar()
 
     def escolher(self, indice):
         if indice == self.indice:
@@ -267,60 +306,47 @@ class Seletor(tk.Canvas):
             self.job = None
         origem_x = self.x
         self.indice = indice
-        inicio, destino = time.monotonic(), indice * 306 + 12
+        inicio, destino = time.monotonic(), indice * 296 + 12
+        precisao_animacao(self, "selecao", True)
         self.comando(MODOS[indice][0])
 
         def passo():
-            t = min(1.0, (time.monotonic() - inicio) / 0.32)
+            t = min(1.0, (time.monotonic() - inicio) / 0.38)
             s = t * t * (3 - 2 * t)
             self.x = origem_x + (destino - origem_x) * s
             self.desenhar()
             self.job = proximo_quadro(self, inicio, passo) if t < 1 else None
+            if t >= 1:
+                precisao_animacao(self, "selecao", False)
         passo()
         return "break"
 
     def desenhar(self):
-        self.delete("all")
-        base = "#000000" if self["bg"] == "#000000" else "#23262c"
-        arredondar(self, 0, 11, 940, 104, 22, fill=base, outline=BORDA)
-        self.foto_halo = ImageTk.PhotoImage(self.halo_atual)
-        self.create_image(self.x + 150, 58, image=self.foto_halo)
-        sobre_selecao = self.hover_t if self.hover_indice == self.indice else 0.0
-        preenchimento = misturar("#343941", self.cor, 0.13 + sobre_selecao * 0.06)
-        arredondar(self, self.x, 21, self.x + 304, 94, 17,
-                   fill=preenchimento, outline=misturar("#4a505a", self.cor, 0.45))
-        for i, (_, titulo, descricao, cor) in enumerate(MODOS):
-            x = 42 + i * 306
+        if not hasattr(self, "face_item"):
+            self.imagem(0, 0, superficie((912, 92), FUNDO, raio=30, pressionado=True), anchor="nw")
+            self.face_item = self.imagem(self.x, 5, superficie((296, 82), raio=24), anchor="nw")
+            self.rotulos, self.icones = [], []
+            for i, (_, titulo, _, _) in enumerate(MODOS):
+                total = self.fonte.measure(titulo) + 38
+                x = 160 + i * 296 - total / 2
+                self.icones.append(self.imagem(x + 12, 46, icone(("onda", "spotify", "video")[i], SECUNDARIO)))
+                self.rotulos.append(self.create_text(x + 38, 46, text=titulo, anchor="w",
+                                                      font=self.fonte, fill=SECUNDARIO))
+            self.foco_item = self.create_oval(0, 72, 6, 75, outline="", state="hidden")
+        face = misturar("#f8f8f5", self.cor, 0.035)
+        self.coords(self.face_item, self.x, 5)
+        self.alterar_imagem(self.face_item, superficie((296, 82), face, raio=24))
+        for i, (_, titulo, _, _) in enumerate(MODOS):
             selecionado = i == self.indice
-            sobre = self.hover_t if self.hover_indice == i else 0.0
-            if sobre and not selecionado:
-                arredondar(self, i * 306 + 12, 23, i * 306 + 314, 92, 17,
-                           fill=misturar("#23262c", self.cor, 0.065 * sobre),
-                           outline=misturar("#23262c", self.cor, 0.28 * sobre))
-            icone = self.cor if selecionado else misturar("#969da8", self.cor, sobre * 0.7)
-            if i == 0:
-                pontos = tuple(coordenada for dx, y in self.onda for coordenada in (x + dx, y))
-                self.create_line(*pontos, fill=icone, width=2, capstyle=tk.ROUND,
-                                 joinstyle=tk.ROUND)
-            elif i == 1:
-                if icone != self.cor_spotify:
-                    imagem = Image.new("RGBA", (24, 24), icone)
-                    imagem.putalpha(self.mascara_spotify)
-                    self.foto_spotify = ImageTk.PhotoImage(imagem)
-                    self.cor_spotify = icone
-                self.create_image(x + 12, 55, image=self.foto_spotify)
-            else:
-                arredondar(self, x - 1, 47, x + 24, 65, 4, fill="", outline=icone, width=2)
-                self.create_line(x + 7, 70, x + 16, 70, fill=icone, width=2)
-            self.create_text(x + 38, 44, text=titulo, anchor="nw", font=self.fonte,
-                             fill=TEXTO if selecionado else "#c7cbd2")
-            self.create_text(x + 38, 67, text=descricao, anchor="nw", font=self.fonte_pequena,
-                             fill=SECUNDARIO)
-        if self.focus_get() is self:
-            arredondar(self, 2, 13, 938, 102, 22, fill="", outline=misturar(BORDA, self.cor, 0.60))
+            sobre = self.hover_valores[i]
+            tinta = self.cor if selecionado else SECUNDARIO
+            self.alterar_imagem(self.icones[i], icone(("onda", "spotify", "video")[i], tinta, 24))
+            self.itemconfigure(self.rotulos[i], fill=misturar(TEXTO if selecionado else SECUNDARIO, self.cor, sobre))
+        self.coords(self.foco_item, 157 + 296 * self.indice, 72, 163 + 296 * self.indice, 75)
+        self.itemconfigure(self.foco_item, fill=self.cor, state="normal" if self.focus_get() is self else "hidden")
 
 
-class Slider(tk.Canvas):
+class Slider(CanvasSuave):
     def __init__(self, master, valor, comando, largura=620, fundo=CARTAO):
         super().__init__(master, width=largura, height=46, bg=fundo,
                          highlightthickness=0, takefocus=True, cursor="hand2")
@@ -369,92 +395,70 @@ class Slider(tk.Canvas):
         return "break"
 
     def atualizar(self, valor=None, cor=None):
+        anterior = (self.valor, self.cor)
         if valor is not None:
             self.valor = valor
         if cor:
             self.cor = cor
-        self.desenhar()
+        if (self.valor, self.cor) != anterior:
+            self.desenhar()
 
     def desenhar(self):
-        self.delete("all")
         x = self.margem + self.valor / 100 * self.percurso
-        self.create_line(self.margem, 23, self.margem + self.percurso, 23,
-                         fill="#484e59", width=6, capstyle=tk.ROUND)
+        w = int(self["width"])
+        if not hasattr(self, "trilho_item"):
+            vazio = Image.new("RGBA", (1, 1))
+            self.trilho_item = self.imagem(0, 0, vazio, anchor="nw")
+            self.botao_item = self.imagem(x - 22, 1, superficie((44, 44), "#fbfbf8", raio=22), anchor="nw")
+            self.ponto_item = self.create_oval(0, 0, 1, 1, outline="")
+            self._trilho_chave = None
+        chave = (self.valor, self.cor)
+        if chave == self._trilho_chave:
+            raio = 3 + self.hover_t
+            self.coords(self.ponto_item, x - raio, 23 - raio, x + raio, 23 + raio)
+            return
+        # O trilho e o botão usam a mesma escala de suavização dos ícones.
+        escala = 3
+        img = Image.new("RGBA", (w * escala, 46 * escala))
+        d = ImageDraw.Draw(img)
+        a, b, y = self.margem * escala, (self.margem + self.percurso) * escala, 23 * escala
+        d.rounded_rectangle((a, y - 4 * escala, b, y + 4 * escala), radius=4 * escala,
+                            fill="#d0d2d0")
+        d.line((a + 3 * escala, y - 3 * escala, b - 3 * escala, y - 3 * escala),
+                fill="#bdc1c1", width=escala)
+        d.line((a + 3 * escala, y + 4 * escala, b - 3 * escala, y + 4 * escala),
+                fill="#fafaf7", width=escala)
         if self.valor:
-            self.create_line(self.margem, 23, x, 23, fill=self.cor, width=6, capstyle=tk.ROUND)
-        for raio, cor in ((16 + self.hover_t * 3, misturar(self["bg"], self.cor, 0.08 + 0.06 * self.hover_t)),
-                          (12 + self.hover_t * 2, misturar(self["bg"], self.cor, 0.18)),
-                          (8 + self.hover_t, self.cor)):
-            self.create_oval(x - raio, 23 - raio, x + raio, 23 + raio, fill=cor, outline="")
-        self.create_oval(x - 3, 20, x + 3, 26, fill="#fbfcff", outline="")
+            d.rounded_rectangle((a, y - 3 * escala, max(a + 1, x * escala), y + 3 * escala),
+                                radius=3 * escala, fill=misturar("#828995", self.cor, 0.65))
+        self.alterar_imagem(self.trilho_item, img.resize((w, 46), Image.Resampling.LANCZOS))
+        self.coords(self.botao_item, x - 22, 1)
+        raio = 3 + self.hover_t
+        self.coords(self.ponto_item, x - raio, 23 - raio, x + raio, 23 + raio)
+        self.itemconfigure(self.ponto_item, fill=self.cor)
+        self._trilho_chave = chave
 
 
-class Aparencia(tk.Canvas):
-    """Painel local: ajustar o vidro não envia comandos à tela ou ao OpenRGB."""
-    def __init__(self, master):
-        super().__init__(master, width=356, height=242, bg=CARTAO,
-                         highlightthickness=0, bd=0)
-        self.janela = master
-        self.f_sans = master.f_sans
-        arredondar(self, 1, 1, 355, 241, 18, fill=CARTAO, outline=BORDA)
-        self.create_text(22, 22, text="APARÊNCIA", anchor="nw", font=master.f_pequena,
-                         fill=SECUNDARIO)
-        self.fechar = Botao(self, "Fechar", master.alternar_aparencia,
-                            largura=65, altura=28, fundo=CARTAO)
-        self.create_window(270, 13, window=self.fechar, anchor="nw")
-        self.toggle = Botao(self, "", master.alternar_acrilico, largura=312,
-                            altura=36, fundo=CARTAO)
-        self.create_window(22, 55, window=self.toggle, anchor="nw")
-        self.create_text(24, 109, text="Opacidade do fundo", anchor="nw",
-                         font=master.f_sans, fill=TEXTO)
-        self.valor = self.create_text(332, 109, anchor="ne", font=master.f_sans, fill=TEXTO)
-        self.slider = Slider(self, master.config_usuario["opacidade_fundo"],
-                             master.mudar_opacidade, largura=336)
-        self.create_window(10, 128, window=self.slider, anchor="nw")
-        self.transparencia = self.create_text(24, 183, anchor="nw", font=master.f_pequena,
-                                               fill=SECUNDARIO)
-        self.nota = self.create_text(24, 207, anchor="nw", font=master.f_pequena,
-                                    fill=SECUNDARIO, width=309)
-
-    def atualizar(self):
-        janela = self.janela
-        config = janela.config_usuario
-        self.toggle.atualizar(texto="Acrílico · ligado" if config["acrilico"] else "Acrílico · desligado",
-                              cor=janela.cor_modo)
-        self.fechar.atualizar(cor=janela.cor_modo)
-        self.slider.atualizar(config["opacidade_fundo"], janela.cor_modo)
-        self.itemconfigure(self.valor, text=f'{config["opacidade_fundo"]}%')
-        self.itemconfigure(self.transparencia, text=f'Transparência: {100 - config["opacidade_fundo"]}%')
-        self.itemconfigure(self.nota, text=janela.acrilico.mensagem)
-        ajustavel = config["acrilico"] and janela.acrilico.ajustavel
-        # Evita apresentar como funcional um ajuste que o Windows não aceitou.
-        self.slider.configure(state="normal" if ajustavel else "disabled",
-                              takefocus=ajustavel, cursor="hand2" if ajustavel else "arrow")
-
-
-class PainelFundo(tk.Canvas):
+class PainelFundo(CanvasSuave):
     def __init__(self, master):
         super().__init__(master, width=452, height=248, bg=CARTAO,
                          highlightthickness=0, bd=0)
         self.janela, self.f_sans = master, master.f_sans
-        arredondar(self, 1, 1, 451, 247, 18, fill=CARTAO, outline=BORDA)
-        self.create_text(22, 22, text="VÍDEO DE FUNDO", anchor="nw", font=master.f_pequena,
-                         fill=SECUNDARIO)
-        self.fechar = Botao(self, "Fechar", master.alternar_painel_fundo,
-                            largura=65, altura=28, fundo=CARTAO)
-        self.create_window(365, 13, window=self.fechar, anchor="nw")
-        self.nome = self.create_text(22, 57, anchor="nw", font=master.f_faixa, fill=TEXTO)
-        self.create_text(22, 86, text="Recorte central para preencher a tela.", anchor="nw",
-                         font=master.f_pequena, fill=SECUNDARIO)
+        self.definir_fundo(superficie((452, 248), "#f1f1ed", raio=22))
+        self.create_text(24, 24, text="Fundo", anchor="nw", font=master.f_modo, fill=TEXTO)
+        self.fechar = Botao(self, "", master.alternar_painel_fundo, simbolo="fechar",
+                            largura=40, altura=40, fundo=CARTAO, dica="Fechar")
+        self.create_window(395, 11, window=self.fechar, anchor="nw")
+        self.nome = self.create_text(24, 64, anchor="nw", font=master.f_sans, fill=SECUNDARIO)
         self.escolher = Botao(self, "Escolher vídeo", master.escolher_fundo,
-                              largura=238, altura=37, primario=True, fundo=CARTAO)
-        self.create_window(22, 113, window=self.escolher, anchor="nw")
-        self.padrao = Botao(self, "Restaurar padrão", master.acao_fundo,
-                            largura=162, altura=37, fundo=CARTAO)
-        self.create_window(268, 113, window=self.padrao, anchor="nw")
+                              largura=238, altura=48, primario=True, fundo=CARTAO)
+        self.create_window(16, 98, window=self.escolher, anchor="nw")
+        self.padrao = Botao(self, "Padrão", master.acao_fundo,
+                            largura=162, altura=48, fundo=CARTAO)
+        self.create_window(264, 98, window=self.padrao, anchor="nw")
         self.percentual = self.create_text(428, 159, anchor="ne", font=master.f_pequena,
                                            fill=SECUNDARIO)
-        self.barra = self.create_line(25, 183, 428, 183, fill="#484e59", width=5,
+        self.barra = self.create_line(25, 183, 428, 183, fill="#d0d2d0", width=5,
                                       capstyle=tk.ROUND)
         self.preenchimento = self.create_line(25, 183, 25, 183, width=5, capstyle=tk.ROUND)
         self.status = self.create_text(24, 202, anchor="nw", font=master.f_pequena,
@@ -465,10 +469,10 @@ class PainelFundo(tk.Canvas):
         ocupado = janela.fundo_convertendo
         nome = (janela.fundo_nome_em_preparo if ocupado else
                 janela.config_usuario["video_ocioso_nome"] or "Fundo padrão")
-        self.itemconfigure(self.nome, text=janela.encurtar(nome, 404, janela.f_faixa))
+        self.itemconfigure(self.nome, text=janela.encurtar(nome, 394, janela.f_sans))
         self.escolher.atualizar(texto="Preparando…" if ocupado else "Escolher vídeo",
                                 ativo=not ocupado, cor=janela.cor_modo)
-        self.padrao.atualizar(texto="Cancelar" if ocupado else "Restaurar padrão",
+        self.padrao.atualizar(texto="Cancelar" if ocupado else "Padrão",
                               ativo=ocupado or janela.config_usuario["video_ocioso"] is not None,
                               cor=janela.cor_modo)
         self.fechar.atualizar(cor=janela.cor_modo)
@@ -573,20 +577,19 @@ class Motor:
 
 class Janela(tk.Tk):
     def __init__(self):
-        registrar_fontes()
+        configurar_dpi()
         super().__init__()
+        self.relogio_animacao = RelogioAnimacaoWindows()
         self.title("Turing Vinyl")
         self.geometry("1000x720")
-        self.resizable(False, False)
+        self.minsize(1000, 720)
+        self.resizable(True, True)
         self.configure(bg=FUNDO)
         self.img_icone_header = None
         self.carregar_icone()
         self.protocol("WM_DELETE_WINDOW", self.fechar)
         self.config_usuario = carregar()
-        self.acrilico = AcrilicoWindows(self)
-        self._vidro_desenhado = False
-        self.aparencia_job = None
-        self.aparencia_aberta = False
+        preparar_janela(self)
         self.conversor_fundo = ConversorFundo()
         self.fundo_painel_aberto, self.fundo_convertendo = False, False
         self.fundo_nome_em_preparo = ""
@@ -598,33 +601,34 @@ class Janela(tk.Tk):
         self.midia, self.capa = None, None
         self.capa_preview = None
         self.capa_base = disco_base()
-        self.cor_modo = next(m[3] for m in MODOS if m[0] == self.config_usuario["modo"])
+        self.rotacao_preview = RotacaoPreview(self.capa_base)
+        self._apresentar_job = None
+        self.cor_modo = PRATA if self.config_usuario.get("gaming") else next(
+            m[3] for m in MODOS if m[0] == self.config_usuario["modo"])
         self.cor_destino, self.tema_job = self.cor_modo, None
         self.disco_job = None
         self._visual = {}
         self._angulo_gui, self._escala_gui = 0.0, 1.0
         self._angulo_externo = 0.0
+        self._velocidade_gui = self._velocidade_externa_gui = 0.0
         self._tempo_preview = time.monotonic()
         self._relogio_preview = self._tempo_preview
         self._preview_chave = None
-        familias = set(tkfont.families(self))
-        serif = next((f for f in familias if f.startswith("Fraunces")), "Georgia")
-        sans = "DM Sans" if "DM Sans" in familias else "Segoe UI"
-        self.f_sans = tkfont.Font(family=sans, size=-14)
-        self.f_pequena = tkfont.Font(family=sans, size=-12)
-        self.f_modo = tkfont.Font(family=sans, size=-17, weight="bold")
-        self.f_titulo = tkfont.Font(family=serif, size=-35, weight="bold")
-        self.f_logo = tkfont.Font(family=serif, size=-27, weight="bold")
-        self.f_faixa = tkfont.Font(family=sans, size=-17, weight="bold")
-        self.f_valor = tkfont.Font(family=sans, size=-29, weight="bold")
-        self.canvas = tk.Canvas(self, width=1000, height=720, bg=FUNDO, bd=0, highlightthickness=0)
-        self.canvas.pack()
-        self.fundo_atual = fundo_janela(self.cor_modo)
+        self.f_sans = FonteInterface(14, 500)
+        self.f_pequena = FonteInterface(12, 450)
+        self.f_modo = FonteInterface(16, 550)
+        self.f_logo = FonteInterface(25, 550, serif=True)
+        self.f_faixa = FonteInterface(32, 500, serif=True)
+        self.f_valor = FonteInterface(17, 550)
+        self.canvas = CanvasSuave(self, width=1000, height=720, bg=FUNDO, bd=0, highlightthickness=0)
+        self.canvas.pack(expand=True)
+        self.fundo_atual = fundo_janela(None)
         self.img_fundo = ImageTk.PhotoImage(self.fundo_atual)
         self.fundo_item = self.canvas.create_image(0, 0, image=self.img_fundo, anchor="nw")
+        self.img_acento = ImageTk.PhotoImage(acento_vinil(self.cor_modo))
+        self.acento_item = self.canvas.create_image(91, 69, image=self.img_acento, anchor="nw")
         self.desenhar()
         self.after(50, self.eventos)
-        self.after(100, self.aplicar_aparencia)
         self.bind("<Escape>", lambda e: self.fechar_paineis())
 
     def texto(self, x, y, texto, fonte=None, cor=TEXTO, **opcoes):
@@ -650,58 +654,55 @@ class Janela(tk.Tk):
     def desenhar(self):
         c = self.canvas
         if self.img_icone_header is not None:
-            c.create_image(47, 43, image=self.img_icone_header)
-        else:
-            c.create_oval(33, 29, 61, 57, fill="#30343b", outline="#a4adba")
-            c.create_oval(42, 38, 52, 48, fill=PRATA, outline="")
-        self.texto(73, 22, "Turing Vinyl", self.f_logo)
-        self.texto(74, 55, "MÚSICA, LUZ E MOVIMENTO", self.f_pequena, SECUNDARIO)
-        self.fundo_botao = Botao(self, "Vídeo de fundo", self.alternar_painel_fundo,
-                                 largura=146, altura=32)
-        c.create_window(496, 28, window=self.fundo_botao, anchor="nw")
-        self.aparencia_botao = Botao(self, "Aparência", self.alternar_aparencia,
-                                     largura=94, altura=32)
-        c.create_window(654, 28, window=self.aparencia_botao, anchor="nw")
-        self.status_ponto = c.create_oval(771, 41, 778, 48, fill="#89929f", outline="")
-        self.status_texto = self.texto(790, 35, "Pronto para conectar", cor=SECUNDARIO)
-        self.hero_rotulo = self.texto(61, 116, "UM OUTRO JEITO DE OUVIR", self.f_pequena, self.cor_modo)
-        self.texto(59, 147, "Sua música,\nno seu ritmo.", self.f_titulo)
-        self.faixa_texto = self.texto(63, 252, "Escolha um modo para começar.", self.f_faixa)
-        self.artista_texto = self.texto(63, 279, "A tela acompanha. Você aproveita.", cor="#c6cbd2")
-        self.disco_item = c.create_image(775, 207)
+            c.create_image(64, 42, image=self.img_icone_header)
+        c.create_text(100, 42, text="Turing Vinyl", font=self.f_logo, fill=TEXTO, anchor="w")
+        self.status_ponto = c.create_oval(102, 67, 108, 73, fill=SECUNDARIO, outline="")
+        self.status_texto = c.create_text(116, 70, text="Pronto", font=self.f_pequena,
+                                          fill=SECUNDARIO, anchor="w")
+        self.fundo_botao = Botao(self, "Fundo", self.alternar_painel_fundo,
+                                 largura=130, altura=48, simbolo="video", dica="Escolher o vídeo de fundo")
+        c.create_window(822, 19, window=self.fundo_botao, anchor="nw")
+
+        self.disco_item = c.create_image(285, 263)
+        self.hero_rotulo = self.texto(529, 171, "", self.f_pequena, SECUNDARIO)
+        self.faixa_texto = self.texto(526, 209, "Turing Vinyl", self.f_faixa, width=408)
+        self.artista_texto = self.texto(529, 304, "", self.f_sans, SECUNDARIO)
+        self.playlist_texto = self.texto(529, 333, "", self.f_pequena, SECUNDARIO)
         self.atualizar_disco()
-        self.texto(34, 347, "MODO DE EXIBIÇÃO", self.f_pequena, SECUNDARIO)
-        self.modo_dica = self.texto(970, 347, "Mude o clima, sem interromper a música.",
-                                   self.f_pequena, SECUNDARIO)
+        self.modo_dica = self.texto(944, 422, "", self.f_pequena, SECUNDARIO)
         c.itemconfigure(self.modo_dica, anchor="ne")
         self.seletor = Seletor(self, self.config_usuario["modo"], self.mudar_modo, self.f_modo, self.f_pequena)
-        c.create_window(30, 375, window=self.seletor, anchor="nw")
-        self.texto(59, 530, "Brilho da tela", self.f_modo)
-        self.valor_texto = self.texto(683, 523, "", self.f_valor)
-        self.auto = Botao(self, "Automático", self.automatico, largura=112, altura=32, fundo=CARTAO)
-        c.create_window(536, 522, window=self.auto, anchor="nw")
-        self.slider = Slider(self, self.valor_brilho(), self.mudar_brilho)
-        c.create_window(48, 558, window=self.slider, anchor="nw")
-        self.brilho_dica = self.texto(63, 610, "", self.f_pequena, SECUNDARIO)
-        self.power = Botao(self, "Desligar tela", self.alternar_tela, largura=162, altura=43, fundo=CARTAO)
-        c.create_window(774, 553, window=self.power, anchor="nw")
-        self.texto(787, 607, "Os LEDs seguem o modo.", self.f_pequena, SECUNDARIO)
-        self.iniciar = Botao(self, "Iniciar exibição", self.alternar_motor, largura=194, altura=42, primario=True)
-        c.create_window(774, 664, window=self.iniciar, anchor="nw")
-        self.aviso = self.texto(34, 675, "Suas preferências ficam salvas neste computador.", self.f_pequena, SECUNDARIO)
-        self.aparencia_painel = Aparencia(self)
-        self.aparencia_item = c.create_window(610, 77, window=self.aparencia_painel,
-                                              anchor="nw", state="hidden")
+        c.create_window(44, 441, window=self.seletor, anchor="nw")
+
+        self.texto(64, 569, "Brilho", self.f_sans)
+        self.valor_texto = self.texto(712, 569, "", self.f_valor)
+        c.itemconfigure(self.valor_texto, anchor="ne")
+        self.slider = Slider(self, self.valor_brilho(), self.mudar_brilho, largura=694, fundo=FUNDO)
+        c.create_window(42, 590, window=self.slider, anchor="nw")
+        self.slider.dica = Dica(self.slider, "Ajustar brilho. 0% apaga a tela.")
+        self.auto = Botao(self, "Auto", self.automatico, largura=94, altura=48,
+                          dica="Brilho automático por horário")
+        c.create_window(750, 586, window=self.auto, anchor="nw")
+        self.power = Botao(self, "", self.alternar_tela, largura=48, altura=48,
+                           simbolo="power", dica="Desligar tela")
+        c.create_window(904, 586, window=self.power, anchor="nw")
+        self.brilho_dica = self.texto(64, 640, "", self.f_pequena, SECUNDARIO)
+
+        self.iniciar = Botao(self, "Iniciar", self.alternar_motor, largura=150, altura=48,
+                             primario=True, simbolo="play", dica="Iniciar exibição")
+        c.create_window(802, 656, window=self.iniciar, anchor="nw")
+        self.gaming_botao = Botao(self, "Gaming", self.alternar_gaming, largura=154,
+                                  altura=48, simbolo="gaming", dica="Usar só o fundo e reduzir o processamento")
+        c.create_window(636, 656, window=self.gaming_botao, anchor="nw")
+        self.aviso = self.texto(64, 673, "", self.f_pequena, SECUNDARIO, width=530)
         self.fundo_painel = PainelFundo(self)
-        self.fundo_painel_item = c.create_window(514, 77, window=self.fundo_painel,
+        self.fundo_painel_item = c.create_window(504, 77, window=self.fundo_painel,
                                                  anchor="nw", state="hidden")
         self.atualizar_controles()
         self.fundo_painel.atualizar()
 
     def alternar_painel_fundo(self):
         self.fundo_painel_aberto = not self.fundo_painel_aberto
-        if self.fundo_painel_aberto and self.aparencia_aberta:
-            self.alternar_aparencia()
         self.fundo_painel.atualizar()
         self.canvas.itemconfigure(self.fundo_painel_item,
                                    state="normal" if self.fundo_painel_aberto else "hidden")
@@ -722,7 +723,7 @@ class Janela(tk.Tk):
             self.fundo_nome_em_preparo = Path(caminho).name
             self.fundo_progresso = 0
             self.fundo_status = ("Abrindo o vídeo…", SECUNDARIO)
-            self.fundo_botao.atualizar(texto="Preparando fundo…")
+            self.fundo_botao.atualizar(texto="Preparando…")
             self.fundo_painel.atualizar()
 
     def acao_fundo(self):
@@ -740,7 +741,7 @@ class Janela(tk.Tk):
             salvar(self.config_usuario)
         except OSError:
             self.config_usuario.update(video_ocioso=anterior[0], video_ocioso_nome=anterior[1])
-            self.fundo_status = ("Não foi possível salvar o novo fundo. O anterior foi mantido.", "#e8c18b")
+            self.fundo_status = ("Não foi possível salvar o novo fundo. O anterior foi mantido.", "#966022")
             self.fundo_painel.atualizar()
             return
         self.motor.enviar({"acao": "configurar", "config": self.config_usuario})
@@ -761,7 +762,7 @@ class Janela(tk.Tk):
                     self.fundo_status = (texto, SECUNDARIO)
                 else:
                     self.fundo_convertendo = False
-                    self.fundo_botao.atualizar(texto="Vídeo de fundo")
+                    self.fundo_botao.atualizar(texto="Fundo")
                     if self.conversor_fundo.cancelamento.is_set():
                         tipo = "cancelado"
                     if tipo == "pronto":
@@ -771,73 +772,14 @@ class Janela(tk.Tk):
                         self.fundo_status = ("Preparação cancelada. O fundo anterior foi mantido.", SECUNDARIO)
                     elif tipo == "erro":
                         self.fundo_progresso = 0
-                        self.fundo_status = (dados, "#e8c18b")
+                        self.fundo_status = (dados, "#966022")
                 self.fundo_painel.atualizar()
         except queue.Empty:
             pass
 
     def fechar_paineis(self):
-        if self.aparencia_aberta:
-            self.alternar_aparencia()
         if self.fundo_painel_aberto:
             self.alternar_painel_fundo()
-
-    def alternar_aparencia(self):
-        self.aparencia_aberta = not self.aparencia_aberta
-        if self.aparencia_aberta and self.fundo_painel_aberto:
-            self.alternar_painel_fundo()
-        self.aparencia_painel.atualizar()
-        self.canvas.itemconfigure(self.aparencia_item, state="normal" if self.aparencia_aberta else "hidden")
-        if self.aparencia_aberta:
-            self.canvas.tag_raise(self.aparencia_item)
-
-    def guardar_aparencia(self):
-        try:
-            salvar(self.config_usuario)
-        except OSError:
-            self.mensagem("Não foi possível salvar a aparência.", "#e8c18b")
-
-    def alternar_acrilico(self):
-        self.config_usuario["acrilico"] = not self.config_usuario["acrilico"]
-        self.aplicar_aparencia()
-        self.guardar_aparencia()
-
-    def mudar_opacidade(self, valor, aplicar):
-        self.config_usuario["opacidade_fundo"] = valor
-        self.aparencia_painel.atualizar()
-        if self.aparencia_job is None:
-            self.aparencia_job = self.after(25, self.aplicar_aparencia)
-        if aplicar:
-            self.guardar_aparencia()
-
-    def aplicar_aparencia(self):
-        if self.encerrando:
-            return
-        if self.aparencia_job:
-            self.after_cancel(self.aparencia_job)
-            self.aparencia_job = None
-        tinta = misturar("#181b20", self.cor_modo, 0.14)
-        ativo = self.acrilico.aplicar(self.config_usuario["acrilico"],
-                                      self.config_usuario["opacidade_fundo"], tinta)
-        if self._vidro_desenhado != ativo:
-            self._vidro_desenhado = ativo
-            fundo = "#000000" if ativo else FUNDO
-            self.configure(bg=fundo)
-            self.canvas.configure(bg=fundo)
-            for widget in (self.seletor, self.iniciar, self.aparencia_botao, self.fundo_botao):
-                widget.configure(bg=fundo)
-                widget.desenhar()
-            for widget in (self.auto, self.power, self.slider):
-                widget.configure(bg="#000000" if ativo else CARTAO)
-                widget.desenhar()
-            if self.tema_job:
-                self.after_cancel(self.tema_job)
-                self.tema_job = None
-            self.fundo_atual = fundo_janela(self.cor_modo, ativo)
-            self.img_fundo.paste(self.fundo_atual)
-            self.cor_destino = self.cor_modo
-            self.atualizar_tema()
-        self.aparencia_painel.atualizar()
 
     def valor_brilho(self):
         if not self.config_usuario["tela_ligada"]:
@@ -845,7 +787,8 @@ class Janela(tk.Tk):
         return self.config_usuario["brilho"] or brilho_horario()
 
     def atualizar_disco(self):
-        capa_visivel = self.capa_preview if self.config_usuario["modo"] != "video" else None
+        capa_visivel = (self.capa_preview if self.config_usuario["modo"] != "video"
+                        and not self.config_usuario.get("gaming") else None)
         lado = max(1, round(114 * self._escala_gui))
         chave = (id(capa_visivel), round(self._angulo_gui, 3),
                  round(self._angulo_externo, 3), lado,
@@ -853,24 +796,37 @@ class Janela(tk.Tk):
         if chave == self._preview_chave:
             return
         self._preview_chave = chave
-        disco = self.capa_base.rotate(-self._angulo_externo, resample=Image.Resampling.BICUBIC)
-        if capa_visivel is not None:
-            capa = capa_visivel.rotate(-self._angulo_gui, resample=Image.Resampling.BICUBIC)
-            if lado != 114:
-                capa = capa.resize((lado, lado), Image.Resampling.BICUBIC)
-            disco.alpha_composite(capa, ((270 - lado) // 2, (270 - lado) // 2))
-        else:
-            d = ImageDraw.Draw(disco)
-            d.ellipse((78, 78, 192, 192), fill=misturar("#3b424d", self.cor_modo, 0.22), outline=self.cor_modo)
-            d.ellipse((116, 116, 154, 154), fill="#292f39", outline=self.cor_modo, width=2)
-            d.ellipse((132, 132, 138, 138), fill=self.cor_modo)
-        if hasattr(self, "img_disco"):
-            self.img_disco.paste(disco)
-        else:
-            self.img_disco = ImageTk.PhotoImage(disco)
-            self.canvas.itemconfigure(self.disco_item, image=self.img_disco)
+        self.rotacao_preview.solicitar(chave, capa_visivel, self._angulo_gui,
+                                       self._angulo_externo, lado,
+                                       misturar("#3b424d", self.cor_modo, 0.22))
+        if self._apresentar_job is None:
+            self._apresentar_job = self.after(8, self.mostrar_disco_pronto)
+
+    def mostrar_disco_pronto(self):
+        self._apresentar_job = None
+        if self.encerrando:
+            return
+        resultado = self.rotacao_preview.receber()
+        if resultado is not None:
+            chave, disco = resultado
+            # Descarta uma capa anterior se o modo ou a música mudou durante o cálculo.
+            if (chave[0] == self._preview_chave[0]
+                    and chave[4] == self._preview_chave[4]):
+                if not hasattr(self, "_buffers_disco"):
+                    self._buffers_disco = [ImageTk.PhotoImage(disco), ImageTk.PhotoImage(disco)]
+                    self._buffer_disco_indice = 0
+                else:
+                    self._buffer_disco_indice = 1 - self._buffer_disco_indice
+                    # Atualiza a imagem que não está exibida, depois troca os buffers.
+                    self._buffers_disco[self._buffer_disco_indice].paste(disco)
+                self.img_disco = self._buffers_disco[self._buffer_disco_indice]
+                self.canvas.itemconfigure(self.disco_item, image=self.img_disco)
+        if self.rotacao_preview.pendente():
+            self._apresentar_job = self.after(8, self.mostrar_disco_pronto)
 
     def cor_desejada(self):
+        if self.config_usuario.get("gaming"):
+            return PRATA
         cor = (self.midia or {}).get("cor")
         if self.config_usuario["modo"] != "video" and cor:
             return cor_album(cor)
@@ -883,47 +839,39 @@ class Janela(tk.Tk):
         self.cor_destino = destino
         if self.tema_job:
             self.after_cancel(self.tema_job)
-        origem, fundo_origem = self.cor_modo, self.fundo_atual
-        # As máscaras de blur são reutilizadas. Só prepara o novo fundo uma vez.
-        fundo_destino = fundo_janela(destino, self.acrilico.ativo)
+        origem = self.cor_modo
         inicio = time.monotonic()
-        ultimo_acrilico = inicio - 1
+        precisao_animacao(self, "tema", True)
 
         def passo():
-            nonlocal ultimo_acrilico
             if self.encerrando:
                 self.tema_job = None
                 return
             t = 1.0 if self.state() == "iconic" else min(1.0, (time.monotonic() - inicio) / 0.65)
             s = t * t * (3 - 2 * t)
             self.cor_modo = misturar(origem, destino, s)
-            self.fundo_atual = fundo_destino if t >= 1 else Image.blend(fundo_origem, fundo_destino, s)
-            self.img_fundo.paste(self.fundo_atual)
-            self.canvas.itemconfigure(self.hero_rotulo, fill=self.cor_modo)
+            self.img_acento.paste(acento_vinil(self.cor_modo))
+            self.canvas.itemconfigure(self.hero_rotulo, fill=SECUNDARIO)
             self.seletor.atualizar_cor(self.cor_modo)
-            for botao in (self.auto, self.power, self.iniciar, self.aparencia_botao, self.fundo_botao):
+            for botao in (self.auto, self.power, self.iniciar, self.fundo_botao,
+                          self.gaming_botao):
                 botao.atualizar(cor=self.cor_modo)
             self.slider.atualizar(cor=self.cor_modo)
-            if self.aparencia_aberta:
-                self.aparencia_painel.atualizar()
             if self.fundo_painel_aberto:
                 self.fundo_painel.atualizar()
-            agora = time.monotonic()
-            if self.acrilico.ativo and (agora - ultimo_acrilico >= 0.05 or t >= 1):
-                if not self.acrilico.aplicar(True, self.config_usuario["opacidade_fundo"],
-                                             misturar("#181b20", self.cor_modo, 0.14)):
-                    self.after_idle(self.aplicar_aparencia)
-                ultimo_acrilico = agora
             if (self.midia or {}).get("conectada"):
                 self.canvas.itemconfigure(self.status_ponto, fill=self.cor_modo)
-                self.canvas.itemconfigure(self.status_texto, fill=self.cor_modo)
-            if self.capa_preview is None or self.config_usuario["modo"] == "video":
+                self.canvas.itemconfigure(self.status_texto, fill=SECUNDARIO)
+            if (self.capa_preview is None or self.config_usuario["modo"] == "video"
+                    or self.config_usuario.get("gaming")):
                 self.atualizar_disco()
             self.tema_job = proximo_quadro(self, inicio, passo) if t < 1 else None
+            if t >= 1:
+                precisao_animacao(self, "tema", False)
         passo()
 
     def atualizar_visual(self, visual):
-        self._visual = visual
+        self._visual = {} if self.config_usuario.get("gaming") else visual
         if self.disco_job is None:
             self.animar_disco()
 
@@ -936,22 +884,35 @@ class Janela(tk.Tk):
         self._tempo_preview = agora
         visual = self._visual
         visivel = (self.rodando and visual.get("visivel", False)
-                   and self.config_usuario["modo"] != "video" and self.config_usuario["tela_ligada"])
+                   and self.config_usuario["modo"] != "video" and self.config_usuario["tela_ligada"]
+                   and not self.config_usuario.get("gaming"))
         velocidade = visual.get("velocidade", 0.0) if visivel else 0.0
         velocidade_externa = visual.get("velocidade_disco", velocidade) if visivel else 0.0
+        if visivel:
+            fator = -math.expm1(-dt / 0.065)
+            self._velocidade_gui += (velocidade - self._velocidade_gui) * fator
+            self._velocidade_externa_gui += (velocidade_externa - self._velocidade_externa_gui) * fator
+            if abs(self._velocidade_gui - velocidade) < 0.02:
+                self._velocidade_gui = velocidade
+            if abs(self._velocidade_externa_gui - velocidade_externa) < 0.02:
+                self._velocidade_externa_gui = velocidade_externa
+        else:
+            self._velocidade_gui = self._velocidade_externa_gui = 0.0
+        velocidade, velocidade_externa = self._velocidade_gui, self._velocidade_externa_gui
         # Só números atravessam o pipe. O disco 270px é animado localmente a 60 FPS.
         # A correção da fase é amortecida para os pacotes não causarem saltos.
         if visivel:
+            idade = max(0.0, agora - visual.get("instante", agora))
             previsto = (self._angulo_gui + velocidade * dt) % 360
             alvo = (visual.get("angulo", 0.0)
-                    + velocidade * min(0.25, max(0.0, agora - visual.get("instante", agora)))) % 360
-            erro = (alvo - previsto + 180) % 360 - 180
-            self._angulo_gui = (previsto + erro * -math.expm1(-dt / 0.07)) % 360
+                    + visual.get("velocidade", 0.0) * idade) % 360
+            erro = (alvo - previsto + 180) % 360 - 180 if idade < 0.4 else 0.0
+            self._angulo_gui = (previsto + erro * -math.expm1(-dt / 0.32)) % 360
             previsto_externo = (self._angulo_externo + velocidade_externa * dt) % 360
             alvo_externo = (visual.get("angulo_disco", visual.get("angulo", 0.0))
-                            + velocidade_externa * min(0.25, max(0.0, agora - visual.get("instante", agora)))) % 360
-            erro_externo = (alvo_externo - previsto_externo + 180) % 360 - 180
-            self._angulo_externo = (previsto_externo + erro_externo * -math.expm1(-dt / 0.07)) % 360
+                            + visual.get("velocidade_disco", visual.get("velocidade", 0.0)) * idade) % 360
+            erro_externo = (alvo_externo - previsto_externo + 180) % 360 - 180 if idade < 0.4 else 0.0
+            self._angulo_externo = (previsto_externo + erro_externo * -math.expm1(-dt / 0.32)) % 360
         else:
             erro = erro_externo = 0.0
         escala_alvo = visual.get("escala", 1.0) if visivel else self._escala_gui
@@ -966,8 +927,10 @@ class Janela(tk.Tk):
         minimizada = self.state() == "iconic"
         if not minimizada:
             self.atualizar_disco()
-        if (abs(velocidade) > 0.001 or abs(velocidade_externa) > 0.001
-                or abs(erro) > 0.02 or abs(erro_externo) > 0.02 or escala_movendo):
+        movendo = (abs(velocidade) > 0.001 or abs(velocidade_externa) > 0.001
+                    or abs(erro) > 0.02 or abs(erro_externo) > 0.02 or escala_movendo)
+        precisao_animacao(self, "vinil", movendo and not minimizada)
+        if movendo:
             self.disco_job = (self.after(250, self.animar_disco) if minimizada else
                               proximo_quadro(self, self._relogio_preview, self.animar_disco))
 
@@ -976,13 +939,18 @@ class Janela(tk.Tk):
         ligada = self.config_usuario["tela_ligada"]
         self.canvas.itemconfigure(self.valor_texto, text=f"{valor}%" if ligada else "0%")
         automatico = self.config_usuario["brilho"] is None
-        self.auto.atualizar(texto="Auto · ligado" if automatico else "Automático", cor=self.cor_modo)
-        self.power.atualizar(texto="Desligar tela" if ligada else "Ligar tela", cor=self.cor_modo)
+        self.auto.atualizar(texto="Auto", cor=self.cor_modo, selecionado=automatico)
+        self.power.atualizar(cor=self.cor_modo, selecionado=not ligada,
+                             dica="Desligar tela" if ligada else "Ligar tela")
         self.iniciar.atualizar(cor=self.cor_modo)
+        gaming = self.config_usuario.get("gaming", False)
+        self.gaming_botao.atualizar(texto="Gaming", selecionado=gaming, cor=self.cor_modo,
+                                    dica="Desligar Gaming" if gaming else "Só o fundo, com menos processamento")
+        self.seletor.dica.texto = ("Modo retomado ao sair de Gaming." if gaming
+                                   else MODOS[self.seletor.indice][2])
+        self.canvas.itemconfigure(self.modo_dica, text="")
         self.slider.atualizar(valor, self.cor_modo)
-        dica = ("Tela apagada. Sua iluminação continua ativa." if not ligada else
-                "Brilho acompanha seu horário." if automatico else "Arraste para ajustar. 0% apaga a tela.")
-        self.canvas.itemconfigure(self.brilho_dica, text=dica)
+        self.canvas.itemconfigure(self.brilho_dica, text="")
         # As informações iniciais também respeitam o modo salvo na última sessão.
         if hasattr(self, "artista_texto"):
             self.atualizar_texto_midia()
@@ -991,7 +959,7 @@ class Janela(tk.Tk):
         try:
             salvar(self.config_usuario)
         except OSError:
-            self.mensagem("Não foi possível salvar as preferências.", "#e8c18b")
+            self.mensagem("Não foi possível salvar as preferências.", "#966022")
         self.motor.enviar({"acao": "configurar", "config": self.config_usuario})
 
     def mudar_modo(self, modo):
@@ -1001,6 +969,21 @@ class Janela(tk.Tk):
         self.atualizar_disco()
         self.atualizar_texto_midia()
         self.guardar()
+
+    def alternar_gaming(self):
+        self.config_usuario["gaming"] = not self.config_usuario.get("gaming", False)
+        if self.config_usuario["gaming"]:
+            self._visual = {}
+            if self.disco_job is not None:
+                self.after_cancel(self.disco_job)
+                self.disco_job = None
+            precisao_animacao(self, "vinil", False)
+        self.atualizar_tema()
+        self.atualizar_controles()
+        self.atualizar_disco()
+        self.guardar()
+        self.mensagem("Preparando Gaming…"
+                      if self.config_usuario["gaming"] else "Voltando ao modo de exibição selecionado…")
 
     def mudar_brilho(self, valor, aplicar):
         self.config_usuario["tela_ligada"] = valor > 0
@@ -1052,14 +1035,14 @@ class Janela(tk.Tk):
                 tipo, dados = self.motor.eventos.get_nowait()
                 if tipo == "iniciado":
                     self.rodando, self.iniciando = True, False
-                    self.iniciar.atualizar(texto="Parar exibição", ativo=True)
+                    self.iniciar.atualizar(texto="Parar", ativo=True, simbolo="stop", dica="Parar exibição")
                 elif tipo in ("parado", "erro"):
                     self.rodando, self.iniciando = False, False
                     self._visual = {}
-                    self.iniciar.atualizar(texto="Iniciar exibição", ativo=True)
-                    self.canvas.itemconfigure(self.status_texto, text="Exibição parada", fill=SECUNDARIO)
+                    self.iniciar.atualizar(texto="Iniciar", ativo=True, simbolo="play", dica="Iniciar exibição")
+                    self.canvas.itemconfigure(self.status_texto, text="Parada", fill=SECUNDARIO)
                     self.canvas.itemconfigure(self.status_ponto, fill="#89929f")
-                    self.mensagem(dados or "Exibição encerrada. Você pode iniciar novamente.", "#e8c18b" if dados else SECUNDARIO)
+                    self.mensagem(dados or "", "#966022" if dados else SECUNDARIO)
                 elif tipo == "estado":
                     self.atualizar_estado(dados)
         except queue.Empty:
@@ -1074,13 +1057,13 @@ class Janela(tk.Tk):
         conectada = dados.get("conectada", False)
         if not conectada:
             self._visual = {}
-        self.canvas.itemconfigure(self.status_texto, text="Tela conectada" if conectada else "Aguardando a tela…",
-                                  fill=self.cor_modo if conectada else SECUNDARIO)
+        self.canvas.itemconfigure(self.status_texto, text="Conectada" if conectada else "Conectando…",
+                                  fill=SECUNDARIO)
         self.canvas.itemconfigure(self.status_ponto, fill=self.cor_modo if conectada else "#89929f")
         self.midia = dados
         if not self.fundo_convertendo:
             if dados.get("erro_fundo"):
-                self.fundo_status = (dados["erro_fundo"], "#e8c18b")
+                self.fundo_status = (dados["erro_fundo"], "#966022")
                 self.fundo_painel.atualizar()
             elif conectada and self.fundo_pendente and dados.get("fundo_ocioso_ativo") == self.config_usuario["video_ocioso"]:
                 self.fundo_pendente = False
@@ -1096,9 +1079,15 @@ class Janela(tk.Tk):
             except (ValueError, OSError):
                 pass
         if dados.get("erro"):
-            self.mensagem(dados["erro"], "#e8c18b")
+            self.mensagem(dados["erro"], "#966022")
+        elif dados.get("erro_gaming"):
+            self.mensagem(dados["erro_gaming"], "#966022")
+        elif self.config_usuario.get("gaming") and dados.get("gaming_preparando"):
+            self.mensagem("Preparando Gaming…")
+        elif dados.get("gaming_ativo"):
+            self.mensagem("")
         elif conectada:
-            self.mensagem("Tudo pronto. Ajuste a tela do seu jeito.")
+            self.mensagem("")
         if self.config_usuario["brilho"] is None and self.config_usuario["tela_ligada"]:
             if self.slider.valor != self.valor_brilho():
                 self.atualizar_controles()
@@ -1106,23 +1095,41 @@ class Janela(tk.Tk):
     def atualizar_texto_midia(self):
         dados = self.midia or {}
         musica = dados.get("musica")
-        if self.config_usuario["modo"] == "video":
-            self.canvas.itemconfigure(self.faixa_texto, text="Seu fundo em primeiro plano.")
-            self.canvas.itemconfigure(self.artista_texto, text="Só vídeo  ·  Modo ambiente")
+        gaming = self.config_usuario.get("gaming", False)
+        self.canvas.itemconfigure(self.playlist_texto, text="")
+        if gaming or self.config_usuario["modo"] == "video":
+            self.canvas.itemconfigure(self.hero_rotulo, text="Gaming" if gaming else "Vídeo")
+            self.canvas.itemconfigure(self.faixa_texto, text="Vídeo de fundo")
+            self.canvas.itemconfigure(self.artista_texto, text="Preparando…" if dados.get("gaming_preparando") else
+                                      self.encurtar(self.config_usuario["video_ocioso_nome"] or "", 408, self.f_sans))
+            self.canvas.coords(self.artista_texto, 529, 267)
             return
         if musica:
             titulo, artista = musica
-            self.canvas.itemconfigure(self.faixa_texto, text=self.encurtar(titulo, 490, self.f_faixa))
-            estado_audio = "Tocando" if dados.get("tocando") else "Em pausa"
-            self.canvas.itemconfigure(self.artista_texto, text=self.encurtar(f"{artista}  ·  {estado_audio}", 490, self.f_sans))
+            # Até duas linhas, sem texto promocional ou estado repetido junto do artista.
+            titulo = limitar_linhas(titulo, self.f_faixa, 408, limite=2)
+            self.canvas.itemconfigure(self.hero_rotulo, text="Spotify" if dados.get("tocando") else "Em pausa")
+            self.canvas.itemconfigure(self.faixa_texto, text=titulo)
+            self.canvas.itemconfigure(self.artista_texto, text=self.encurtar(artista, 408, self.f_sans))
+            altura = texto_suave(titulo, self.f_faixa.chave, TEXTO, 408).height
+            y_artista = 209 + altura + 14
+            self.canvas.coords(self.artista_texto, 529, y_artista)
+            playlist = dados.get("playlist_nome")
+            if playlist:
+                self.canvas.coords(self.playlist_texto, 529, y_artista + 28)
+                self.canvas.itemconfigure(self.playlist_texto,
+                                           text=self.encurtar(playlist, 408, self.f_pequena))
         else:
-            self.canvas.itemconfigure(self.faixa_texto, text="Escolha um modo para começar.")
-            self.canvas.itemconfigure(self.artista_texto, text="A tela acompanha. Você aproveita.")
+            self.canvas.itemconfigure(self.hero_rotulo, text="")
+            self.canvas.itemconfigure(self.faixa_texto, text="Turing Vinyl")
+            self.canvas.itemconfigure(self.artista_texto, text="")
 
     def fechar(self):
         if self.encerrando:
             return
         self.encerrando = True
+        self.relogio_animacao.fechar()
+        self.rotacao_preview.fechar()
         self.conversor_fundo.cancelar()
         self.motor.parar()
         self.iniciar.atualizar(texto="Encerrando…", ativo=False)

@@ -77,6 +77,7 @@ https://github.com/user-attachments/assets/f876053e-42a8-4e0f-b7f9-6a048da14437
 | --- | --- |
 | `tela_completa.py` | Coordinates the display, Windows media, volume, Spotify, and OpenRGB. This is the entry point. |
 | `fundo_usuario.py` | Prepares an idle video selected in the app and swaps its decoder during playback. |
+| `modo_gaming.py` | Prepares and streams the background at 30 FPS without live rendering or encoding. |
 | `ao_vivo.py` | Composes the visuals and encodes the live H.264 stream with FFmpeg. |
 | `animacao_capa.py` | Controls album-cover transitions. |
 | `spotify_playlist.py` | Retrieves playback context and playlist data through the Spotify API. |
@@ -94,7 +95,7 @@ Stop any previous `tela_completa.py` instance with **Ctrl+C**. Double-click `ini
 python interface.py
 ```
 
-Choose a mode and click **Iniciar exibição** (Start display). The controls are in Portuguese.
+Choose a mode and click **Iniciar** (Start). The controls are in Portuguese.
 
 | Mode | While playing | While paused |
 | --- | --- | --- |
@@ -102,17 +103,27 @@ Choose a mode and click **Iniciar exibição** (Start display). The controls are
 | Só Spotify (Spotify only) | The same vinyl experience. | Decelerate the record, fade the glow and filled progress arc, and smoothly shrink the artwork to 70%. Resume restores the artwork; the glow reaches full intensity when the artwork reaches full size, while the arc fills from zero to the current playback position. Keep the album's RGB color. |
 | Só vídeo (Video only) | Idle background video. | Idle background video and idle RGB profile. |
 
-Brightness is applied when you release the slider, avoiding repeated RGB updates while dragging. **Automático** uses the existing time-based brightness schedule. **Desligar tela** turns off the backlight and sends a black frame; the LEDs continue following the selected mode. Closing the window stops the process it started.
+**Gaming** is a separate toggle. It shows only the selected background video at **30 FPS**, without music artwork, metadata, playlist cards, or the volume overlay. The app's record preview stops, and the LEDs use the existing idle profile. Brightness and screen power remain available. The three mode cards select the mode to restore when Gaming is turned off, returning the normal stream to its 60 FPS target.
 
-The interface uses a graphite and soft silver base. Controls, icons, and glow smoothly follow the album's color. Buttons, mode selection and the slider have animated hover feedback. Both the outer record and the artwork follow the display's motion, with a 60 FPS target and animation timing based on elapsed time. Stationary images and precomputed glow masks are reused. Motion comes from the script's existing state, with no additional Spotify API requests.
+The first activation prepares a cached H.264 version in `%LOCALAPPDATA%\TuringScreen\gaming`, using two encoding threads and below normal priority. Playback continues during preparation. Once ready, the file loops through the existing USB queue without live Pillow rendering, background decoding, or FFmpeg/NVENC encoding. Media and Spotify API polling are suspended while Gaming is active. The computer still sends the video over USB, so resource usage is not zero and savings depend on the system. Original files are preserved.
+
+Importing another background during Gaming keeps the previous video playing until the new one is ready. Preparation errors are shown in the interface and keep the previous display running; toggle Gaming off and on to retry. Switching streams may briefly interrupt playback while the display's decoder restarts.
+
+Brightness is applied when you release the slider, avoiding repeated RGB updates while dragging. **Auto** uses the existing time-based brightness schedule. The **power icon** turns off the backlight and sends a black frame; the LEDs continue following the selected mode. Closing the window stops the process it started.
+
+The interface uses warm soft silver, borderless surfaces with subtle raised and inset shadows, and compact controls. The vinyl and track title take priority over decorative text. Accent colors follow the album, and buttons, mode selection and the slider respond smoothly to hover. Explanations appear in tooltips instead of permanent descriptions. Both the outer record and the artwork follow the display's motion, with a 60 FPS target and animation timing based on elapsed time. Stationary images and precomputed glow masks are reused. Motion comes from the script's existing state, with no additional Spotify API requests.
 
 The app icon is a silver turntable with a muted slate blue center, supplied as PNG and ICO in `assets/icons` and used in the window and header.
 
-Open **Aparência** (Appearance) to toggle Windows 11 acrylic and adjust background opacity. Lower opacity reveals more of the windows behind the app; text and controls stay opaque. Windows performs the blur, and appearance settings do not send commands to the screen or RGB controller. If adjustable acrylic is unavailable, the panel reports the Windows-managed material or falls back to a solid background.
+Track title, artist and available playlist name are grouped together. The playlist uses the context the script already reads. Record rotation is calculated by a local worker with only the latest request and result retained. Controls reuse their canvas items and images during transitions; mode hover only fades the text toward the accent color, without shadows or movement.
 
-Open **Vídeo de fundo → Escolher vídeo** (Background video → Choose video) to import an idle background. The app prepares it in the background with progress and cancellation. **Restaurar padrão** restores the project's `video_fundo.mp4`.
+The app keeps its native window frame and does not set Windows acrylic or backdrop policies. **Mica For Everyone** can manage the frame; the Tk content remains opaque and readable. The acrylic toggle and opacity slider have been removed. A dedicated rule can target the `TkTopLevel` window class (`python` or `pythonw`, depending on how the app was started). Keep **Extend Frame Into Client Area** and **Blur Behind** off to preserve Tk rendering. [Official Mica For Everyone configuration](https://github.com/MicaForEveryone/MicaForEveryone/wiki/Config-File).
 
-Preferences are stored locally in `%LOCALAPPDATA%\TuringScreen\interface.json`. The interface uses Tkinter and Pillow, with no embedded browser. Fraunces and DM Sans from Google Fonts are bundled in `assets/fonts` with their SIL Open Font License files.
+The main view keeps the large rotating record on the left and track details on the right.
+
+Open **Fundo → Escolher vídeo** (Background video → Choose video) to import an idle background. The app prepares it in the background with progress and cancellation. **Padrão** restores the project's `video_fundo.mp4`.
+
+Preferences are stored locally in `%LOCALAPPDATA%\TuringScreen\interface.json`. The interface uses Tkinter and Pillow, with no embedded browser. Fraunces and DM Sans from Google Fonts are bundled in `assets/fonts` with their SIL Open Font License files. Text uses cached FreeType rendering at 3× with Lanczos reduction and explicit variable font weights and optical sizes. The app declares Windows DPI awareness without changing system font settings.
 
 Direct execution with `python tela_completa.py` retains the original dynamic display and time-based brightness behavior.
 

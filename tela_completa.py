@@ -35,6 +35,7 @@ import animacao_capa
 from spotify_playlist import SpotifyPlaylistWatcher
 from controle_interface import Controles, iniciar_ponte, reservar_execucao, liberar_execucao
 from fundo_usuario import FundoOcioso
+from modo_gaming import PreparadorGaming, PipelinePreparado, FPS_GAMING
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -82,6 +83,7 @@ estado = {
     "tela_conectada": False, "erro_interface": "",
     "visual_disco": None,
     "fundo_ocioso_ativo": None, "erro_fundo": "",
+    "gaming_ativo": False, "gaming_preparando": False, "erro_gaming": "",
 }
 
 
@@ -355,6 +357,9 @@ def _laco_volume():
                         pass
                 else:
                     while not parar.is_set() and not trocar_saida.is_set():
+                        if controles.gaming_ativo:
+                            parar.wait(0.5)
+                            continue
                         _atualizar_volume(volume_interface.GetMasterVolumeLevelScalar())
                         parar.wait(0.01)
             except Exception as exc:
@@ -1209,7 +1214,7 @@ class Painel:
         return quadro
 
 
-def sessao_usb():
+def sessao_usb(gaming):
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("ffmpeg não encontrado no PATH")
     dev = libusb_package.find(idVendor=0x1CBE, idProduct=0x21)
@@ -1225,67 +1230,94 @@ def sessao_usb():
         for n in (111, 112, 13):
             cmd(n)
 
-        with silenciar_saida():
-            for n in (111, 112, 13):
-                try:
+        primeira = True
+        while not parar.is_set():
+            arquivo_gaming = gaming.destino()
+            economico = arquivo_gaming is not None
+            fps_atual = FPS_GAMING if economico else FPS
+            with silenciar_saida():
+                # Reinicia o decodificador da tela entre dois fluxos H.264 completos.
+                # A thread do envio anterior já foi encerrada antes de chegar aqui.
+                for n in (111, 112, 13):
                     cmd(n)
                     time.sleep(0.05)
-                except Exception:
-                    pass
-
-            brilho = brilho_tela_para(datetime.datetime.now())
-
-            try:
+                brilho = brilho_tela_para(datetime.datetime.now())
                 operations.send_brightness_command(dev, brilho)
                 time.sleep(0.05)
                 cmd(41)
                 time.sleep(0.05)
                 operations.clear_image(dev)
                 time.sleep(0.05)
-                operations.send_frame_rate_command(dev, FPS)
+                operations.send_frame_rate_command(dev, fps_atual)
                 time.sleep(0.05)
-            except Exception:
-                pass
 
-        log(f"tela conectada - brilho inicial: {brilho}%")
-        estado.update(tela_conectada=True, erro_interface="")
+            controles.gaming_ativo = economico
+            estado.update(tela_conectada=True, erro_interface="", gaming_ativo=economico,
+                          modo_exibicao=controles.modo_efetivo(), visual_disco=None)
+            if economico:
+                estado["fundo_ocioso_ativo"] = gaming.origem_do(arquivo_gaming)
+            if primeira:
+                log(f"tela conectada - brilho inicial: {brilho}%")
+                primeira = False
+            log("Gaming: vídeo preparado a 30 FPS, sem renderização ou codificação ao vivo"
+                if economico else f"tela: fluxo normal a {FPS} FPS")
 
-        fundo_musica = ao_vivo.FundoDecoder(
-            ARQUIVO_MUSICA, FPS, log=log, nome="fundo da música")
-        if controles.interface:
-            fundo_ocioso = FundoOcioso(controles, ao_vivo.FundoDecoder,
-                                       ARQUIVO_BACKGROUND, FPS, estado, log)
-        else:
-            fundo_ocioso = ao_vivo.FundoDecoder(
-                ARQUIVO_BACKGROUND, FPS, log=log, nome="fundo ocioso")
-        painel = Painel(fundo_musica, fundo_ocioso, brilho)
-
-        # O pipeline dá parar.set() no próprio evento ao terminar (inclusive por erro);
-        # por isso ele usa um evento só da sessão, ligado ao parar global por esta ponte.
-        parar_sessao = threading.Event()
-
-        def ponte():
-            while not parar_sessao.is_set():
-                if parar.wait(0.2):
-                    parar_sessao.set()
-
-        threading.Thread(target=ponte, daemon=True).start()
-
-        pipe = ao_vivo.PipelineAoVivo(
-            dev, painel.quadro, fps=FPS, kbps=KBPS, parar=parar_sessao, log=log)
-        painel.pipe = pipe
-        pipe.contexto = painel.contexto_diagnostico
-        try:
-            pipe.rodar()
-        finally:
-            parar_sessao.set()
-            fundo_musica.fechar()
-            fundo_ocioso.fechar()
+            # Cada fluxo tem seu evento; trocar Gaming não encerra os demais serviços.
+            parar_sessao = threading.Event()
+            fundo_musica = fundo_ocioso = pipe = ponte_thread = None
             try:
-                cmd(123)
-            except Exception:
-                pass
+                if economico:
+                    pipe = PipelinePreparado(dev, arquivo_gaming, parar_sessao, log)
+                else:
+                    fundo_musica = ao_vivo.FundoDecoder(
+                        ARQUIVO_MUSICA, FPS, log=log, nome="fundo da música")
+                    if controles.interface:
+                        fundo_ocioso = FundoOcioso(controles, ao_vivo.FundoDecoder,
+                                                   ARQUIVO_BACKGROUND, FPS, estado, log)
+                    else:
+                        fundo_ocioso = ao_vivo.FundoDecoder(
+                            ARQUIVO_BACKGROUND, FPS, log=log, nome="fundo ocioso")
+                    painel = Painel(fundo_musica, fundo_ocioso, brilho)
+                    pipe = ao_vivo.PipelineAoVivo(
+                        dev, painel.quadro, fps=FPS, kbps=KBPS, parar=parar_sessao, log=log)
+                    painel.pipe = pipe
+                    pipe.contexto = painel.contexto_diagnostico
+
+                def ponte():
+                    ultimo_brilho = brilho
+                    while not parar_sessao.is_set():
+                        if parar.is_set() or gaming.destino() != arquivo_gaming:
+                            parar_sessao.set()
+                            return
+                        if economico:
+                            novo = brilho_tela_para(datetime.datetime.now())
+                            if novo != ultimo_brilho:
+                                pipe.env.executar(
+                                    lambda tela, b=novo: operations.send_brightness_command(tela, b))
+                                ultimo_brilho = novo
+                                log(f"Brilho alterado para: {novo}%")
+                        parar_sessao.wait(0.1)
+
+                ponte_thread = threading.Thread(target=ponte, name="PerfilTela", daemon=True)
+                ponte_thread.start()
+                pipe.rodar()
+            finally:
+                parar_sessao.set()
+                if ponte_thread is not None:
+                    ponte_thread.join(timeout=1)
+                for decoder in (fundo_musica, fundo_ocioso):
+                    if decoder is not None:
+                        decoder.fechar()
+                if pipe is not None and pipe.env.ident is not None:
+                    pipe.env.join(timeout=8)
+                    if pipe.env.is_alive():
+                        raise RuntimeError("O envio USB não encerrou; aguarde antes de iniciar outro fluxo.")
+                with contextlib.suppress(Exception):
+                    cmd(123)
     finally:
+        controles.gaming_ativo = False
+        estado["gaming_ativo"] = False
+        estado["modo_exibicao"] = controles.modo_efetivo()
         estado["tela_conectada"] = False
         estado["visual_disco"] = None
         try:
@@ -1294,10 +1326,10 @@ def sessao_usb():
             pass
 
 
-def transmitir():
+def transmitir(gaming):
     while not parar.is_set():
         try:
-            sessao_usb()
+            sessao_usb(gaming)
         except Exception as exc:
             estado["erro_interface"] = str(exc)
             log(f"erro: {exc}")
@@ -1387,7 +1419,7 @@ async def vigiar_spotify():
         log(f"capa: aviso de sessões indisponível ({exc})")
     try:
         while not parar.is_set():
-            if controles.config["modo"] == "video":
+            if controles.modo_efetivo() == "video":
                 if not em_video:
                     observar_sessao(None)
                     estado.update(musica=None, capa=None, tocando=False, midia_pronta=True,
@@ -1410,7 +1442,7 @@ async def vigiar_spotify():
                             sessao = s
                             break
 
-                if sessao is None and (not ESCONDER_PAUSADO or controles.config["modo"] == "spotify"):
+                if sessao is None and (not ESCONDER_PAUSADO or controles.modo_efetivo() == "spotify"):
                     for s in sessoes:
                         if "spotify" in s.source_app_user_model_id.lower():
                             sessao = s
@@ -1419,7 +1451,7 @@ async def vigiar_spotify():
                 observar_sessao(sessao)
                 tocando = sessao is not None and int(sessao.get_playback_info().playback_status) == 4
 
-                if sessao is None or (ESCONDER_PAUSADO and not tocando and controles.config["modo"] != "spotify"):
+                if sessao is None or (ESCONDER_PAUSADO and not tocando and controles.modo_efetivo() != "spotify"):
                     estado.update(musica=None, capa=None, cor_capa=(30, 215, 96, 255),
                                   cor_viva=(30, 215, 96, 255), tocando=False, midia_pronta=True,
                                   pedido_capa_album=None, capa_album_api=None)
@@ -1536,6 +1568,8 @@ async def main_async():
 
 
 def main():
+    gaming = PreparadorGaming(controles, estado, parar, ARQUIVO_BACKGROUND, log)
+    gaming.iniciar()
     if "--interface" in sys.argv:
         iniciar_ponte(controles, estado, parar, log)
     watcher_playlist = SpotifyPlaylistWatcher(
@@ -1552,7 +1586,7 @@ def main():
     t_vol = threading.Thread(target=_laco_volume, daemon=True)
     t_vol.start()
 
-    t = threading.Thread(target=transmitir, daemon=True)
+    t = threading.Thread(target=transmitir, args=(gaming,), daemon=True)
     t.start()
     
     try:
@@ -1560,8 +1594,9 @@ def main():
     except KeyboardInterrupt:
         pass
     parar.set()
+    gaming.fechar()
     watcher_playlist.fechar()
-    t.join(timeout=5)
+    t.join(timeout=12)
     log("parado")
 
 

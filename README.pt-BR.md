@@ -77,8 +77,10 @@ https://github.com/user-attachments/assets/f876053e-42a8-4e0f-b7f9-6a048da14437
 | --- | --- |
 | `tela_completa.py` | Coordena a tela, a mídia do Windows, o volume, o Spotify e o OpenRGB. É o ponto de entrada. |
 | `interface.py` / `iniciar_interface.pyw` | Janela de controle; abra o `.pyw` com dois cliques ou execute `python interface.py`. |
+| `estilo_interface.py` | Desenha superfícies, ícones e textos suavizados da interface, com cache. |
 | `controle_interface.py` | Guarda as preferências locais e conecta a janela ao processo da tela. |
 | `fundo_usuario.py` | Prepara o vídeo ocioso escolhido no app e troca o decoder durante a exibição. |
+| `modo_gaming.py` | Prepara e transmite o fundo a 30 FPS sem renderização ou codificação ao vivo. |
 | `ao_vivo.py` | Compõe os elementos visuais e codifica o fluxo H.264 em tempo real com FFmpeg. |
 | `animacao_capa.py` | Controla as transições das capas. |
 | `spotify_playlist.py` | Consulta o contexto de reprodução e os dados da playlist pela API do Spotify. |
@@ -96,7 +98,7 @@ Encerre qualquer execução anterior de `tela_completa.py` com **Ctrl+C**. Abra 
 python interface.py
 ```
 
-Escolha um modo e clique em **Iniciar exibição**. A janela fica disponível para ajustar os controles durante a reprodução.
+Escolha um modo e clique em **Iniciar**. A janela fica disponível para ajustar os controles durante a reprodução.
 
 | Modo | Com música | Durante a pausa |
 | --- | --- | --- |
@@ -104,18 +106,26 @@ Escolha um modo e clique em **Iniciar exibição**. A janela fica disponível pa
 | Só Spotify | A mesma experiência com o vinil. | O vinil desacelera; o glow e o preenchimento do arco desaparecem, e a capa encolhe suavemente até 70%. Ao retomar, a capa volta; o glow atinge a intensidade máxima quando ela chega ao tamanho completo, enquanto o arco cresce de zero até o progresso atual. Os LEDs mantêm a cor do álbum. |
 | Só vídeo | Apenas o vídeo de fundo. | Vídeo de fundo e perfil RGB ocioso. |
 
+**Gaming** é um botão independente dos três modos. Ao ligar, a tela reproduz somente o vídeo de fundo a **30 FPS**, sem capa, textos da música, playlist ou indicador de volume. A prévia do vinil no app fica parada e os LEDs usam o perfil ocioso existente. O brilho e o botão de desligar a tela continuam disponíveis. Os três cartões passam a escolher o modo que será retomado quando Gaming for desligado; o fluxo normal volta ao alvo de 60 FPS.
+
+Na primeira ativação de cada vídeo, o app prepara e guarda uma versão H.264 em `%LOCALAPPDATA%\TuringScreen\gaming`, com prioridade reduzida e duas threads. A exibição anterior continua durante essa preparação. Depois, o arquivo é transmitido em loop pela mesma fila USB do fluxo normal: não há montagem de quadros com Pillow, decodificação dos fundos ou codificação FFmpeg/NVENC em tempo real. As consultas de mídia e da API do Spotify ficam suspensas enquanto Gaming está ativo. O computador continua enviando o vídeo por USB, portanto o consumo não é zero e a economia depende do sistema. Os arquivos originais são preservados.
+
+Se você importar outro fundo durante Gaming, o vídeo anterior continua até o novo ficar pronto. Se a preparação falhar, a interface informa o erro e mantém a exibição anterior. Desligue e ligue Gaming para tentar novamente. A troca de fluxo pode ter uma breve interrupção enquanto o decodificador da tela é reiniciado.
+
 - O slider mostra o valor durante o arraste e aplica o brilho ao soltar, evitando uma sequência de atualizações na controladora RGB.
-- **Automático** mantém a programação de brilho por horário. Arrastar o slider ativa o ajuste manual.
-- **Desligar tela** apaga o backlight e mostra um quadro preto; os LEDs continuam seguindo o modo selecionado. O USB permanece conectado.
+- **Auto** mantém a programação de brilho por horário. Arrastar o slider ativa o ajuste manual.
+- O **ícone de energia** apaga o backlight e mostra um quadro preto; os LEDs continuam seguindo o modo selecionado. O USB permanece conectado.
 - As preferências ficam em `%LOCALAPPDATA%\TuringScreen\interface.json`.
 - Fechar a janela encerra a execução que ela iniciou. A janela impede uma segunda execução simultânea.
-- A base da interface usa grafite e prata suave. As cores dos controles, dos ícones e do glow acompanham a capa do álbum, com transição suave. Botões, modos e slider têm resposta animada ao mouse.
+- A interface usa prata clara com fundo levemente quente, superfícies em relevo sem contornos e controles compactos. O vinil e o nome da faixa ocupam o centro da composição. Os acentos acompanham a capa do álbum; botões, modos e slider têm resposta suave ao mouse. As explicações aparecem em dicas, em vez de descrições permanentes.
 - O ícone do aplicativo é um toca-discos prateado com centro azul acinzentado, disponível em PNG e ICO em `assets/icons` e usado na janela e no cabeçalho.
-- O vinil externo e a capinha da interface acompanham o movimento da tela, com alvo de 60 FPS e agendamento pelo relógio. A capinha também acompanha o encolhimento durante a pausa.
-- **Aparência** permite ligar/desligar o acrílico do Windows 11 e ajustar a opacidade do fundo. Menor opacidade revela mais das janelas atrás do app. Textos e controles permanecem opacos. O Windows compõe o blur; esse ajuste não envia comandos à tela ou aos LEDs. Se o acrílico ajustável estiver indisponível, o painel informa o material controlado pelo Windows ou usa o fundo sólido.
-- **Vídeo de fundo → Escolher vídeo** permite importar o fundo ocioso. O app faz a preparação em segundo plano, mostra o progresso e permite cancelar. **Restaurar padrão** volta ao `video_fundo.mp4` do projeto.
+- O título, o artista e a playlist disponível ficam juntos. O nome da playlist usa o contexto já consultado pelo script.
+- O vinil externo e a capinha da interface acompanham o movimento da tela, com alvo de 60 FPS e agendamento pelo relógio. A capinha também acompanha o encolhimento durante a pausa. O cálculo da rotação usa um trabalhador local com apenas um pedido e um resultado recentes; cliques e sliders continuam na janela. Os controles reutilizam imagens e itens durante transições. Nos modos, o hover muda somente a cor do texto, sem sombra ou deslocamento.
+- O app usa a moldura nativa e não define políticas de acrílico ou material do Windows. O **Mica For Everyone** pode gerenciar essa moldura; o conteúdo permanece opaco e legível. Os antigos controles de acrílico e opacidade foram removidos. Para uma regra específica, a classe da janela é `TkTopLevel` (o processo é `python` ou `pythonw`, conforme a forma de iniciar). Use o material apenas na moldura e deixe **Extend Frame Into Client Area** e **Blur Behind** desligados para preservar o desenho do Tk. [Configuração oficial do Mica For Everyone](https://github.com/MicaForEveryone/MicaForEveryone/wiki/Config-File).
+- A tela principal mantém o disco grande à esquerda e as informações da faixa à direita.
+- **Fundo → Escolher vídeo** permite importar o fundo ocioso. O app faz a preparação em segundo plano, mostra o progresso e permite cancelar. **Padrão** volta ao `video_fundo.mp4` do projeto.
 - A interface usa Tkinter e Pillow, sem navegador embutido. As máscaras do glow são preparadas na abertura; a capa parada é reutilizada. A sincronização usa números enviados pelo próprio script, sem consultas extras ao Spotify.
-- As fontes **Fraunces** e **DM Sans**, do Google Fonts, estão incluídas em `assets/fonts`, com suas licenças SIL Open Font License. A janela funciona sem baixar fontes na inicialização.
+- As fontes **Fraunces** e **DM Sans**, do Google Fonts, estão incluídas em `assets/fonts`, com suas licenças SIL Open Font License. A renderização usa FreeType a 3× com redução Lanczos e cache de textos; os pesos e tamanhos ópticos das fontes variáveis são definidos explicitamente. A janela declara suporte ao DPI do Windows, sem alterar as preferências de fonte do sistema. Não há download de fontes na inicialização.
 
 A execução direta com `python tela_completa.py` continua disponível, com o comportamento dinâmico e o brilho por horário originais.
 
@@ -196,7 +206,7 @@ Os conversores produzem vídeos quadrados de 480 × 480 a 30 FPS:
 - `converter.bat` gera `video_tela.mp4` a partir de `entrada.mp4`. Na versão atual, o nome de origem está fixado no próprio arquivo; coloque o vídeo com esse nome na pasta do projeto.
 - `converter_fundo.bat` pede o caminho do vídeo de origem e gera `video_fundo.mp4`.
 
-Pela interface, use **Vídeo de fundo → Escolher vídeo**. A importação aplica a preparação do conversor de fundo: 480 × 480, recorte central, 30 FPS, H.264 sem áudio e os ajustes de saturação/contraste existentes. Requer FFmpeg e FFprobe no `PATH`, com o codificador `libx264`.
+Pela interface, use **Fundo → Escolher vídeo**. A importação aplica a preparação do conversor de fundo: 480 × 480, recorte central, 30 FPS, H.264 sem áudio e os ajustes de saturação/contraste existentes. Requer FFmpeg e FFprobe no `PATH`, com o codificador `libx264`.
 
 A conversão usa prioridade reduzida no Windows, duas threads de codificação e uma thread de filtros. Os arquivos prontos ficam em `%LOCALAPPDATA%\TuringScreen\fundos`; o vídeo de origem, o fundo padrão e as importações anteriores são preservados. A preferência fica salva para a próxima abertura.
 
