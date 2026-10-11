@@ -1575,7 +1575,8 @@ def main():
     watcher_playlist = SpotifyPlaylistWatcher(
         atualizar_capa_playlist, log,
         ler_estado=lambda: dict(estado), ao_proxima=atualizar_proxima_faixa,
-        ao_capa_album=atualizar_capa_album)
+        ao_capa_album=atualizar_capa_album,
+        ao_reproducao=lambda dados: estado.update(spotify_reproducao=dados))
     watcher_playlist.iniciar()
     try:
         import leds_openrgb

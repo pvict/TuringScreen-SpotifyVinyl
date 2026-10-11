@@ -29,6 +29,7 @@ import math
 
 from openrgb import OpenRGBClient
 from openrgb.utils import RGBColor
+from registro_leds import RegistroLEDs
 
 _ultima_cor_debug = None
 
@@ -251,7 +252,7 @@ def _misturar(a, b, t):
     }
 
 
-def _enviar_etapa(zonas, cores, escrito, etapa, passos, parar, log):
+def _enviar_etapa(zonas, cores, escrito, etapa, passos, parar, log, registro=None):
     """UPDATE_SINGLE_LED espaçados; evita o lote interno do driver Polychrome v2."""
     dispositivos = []
     for _chave_zona, dev, _zona in zonas:
@@ -296,18 +297,38 @@ def _enviar_etapa(zonas, cores, escrito, etapa, passos, parar, log):
         resumo = {k: cores[k][0] if cores[k] else None for k, _z in selecionadas}
         log(f"openrgb: envio espaçado dispositivo={dev.name} leds={len(pendentes)} intervalo={intervalo_led:.3f}s pausa_min={PAUSA_LED_MIN:.3f}s cores={resumo} etapa={etapa}/{passos}")
         inicio_envio = time.monotonic()
-        for _nome_zona, led, cor in pendentes:
-            if parar.is_set():
-                return True
-            inicio_led = time.monotonic()
-            # Mantém a leitura de estado do SDK após o comando. Ela não confirma
-            # a cor física, mas evita disparar uma fila de comandos sem retorno.
-            led.set_color(RGBColor(*cor))
-            # O tempo de resposta entra no orçamento da etapa. Se ele for alto,
-            # mantemos a pausa mínima e alongamos o fade, sem recuperar com rajadas.
-            espera = max(PAUSA_LED_MIN, intervalo_led - (time.monotonic() - inicio_led))
-            if parar.wait(espera):
-                return True
+        envios = []
+        resultado_etapa = "interrompida"
+        try:
+            for nome_zona, led, cor in pendentes:
+                if parar.is_set():
+                    return True
+                inicio_utc_ms = round(time.time() * 1000)
+                inicio_led = time.monotonic()
+                envio = {"inicio_utc_ms": inicio_utc_ms, "zona": nome_zona,
+                         "led_logico": led.id, "rgb": cor, "resultado": "erro_sdk"}
+                envios.append(envio)
+                try:
+                    # A resposta continua sendo do SDK, não da cor física.
+                    led.set_color(RGBColor(*cor))
+                    envio["resultado"] = "retorno_sdk"
+                except Exception as exc:
+                    envio["erro"] = f"{type(exc).__name__}: {exc}"
+                    resultado_etapa = "erro_sdk"
+                    raise
+                finally:
+                    duracao_led = time.monotonic() - inicio_led
+                    envio["duracao_ms"] = round(duracao_led * 1000, 3)
+                # O tempo de resposta entra no orçamento original da etapa.
+                espera = max(PAUSA_LED_MIN, intervalo_led - duracao_led)
+                if parar.wait(espera):
+                    return True
+            resultado_etapa = "retorno_sdk"
+        finally:
+            if registro is not None:
+                registro.registrar("etapa_sdk", dispositivo=dev.name, etapa=etapa,
+                                   passos=passos, intervalo_ms=round(intervalo_led * 1000, 3),
+                                   resultado=resultado_etapa, envios=envios)
         for chave, _zona in selecionadas:
             escrito[chave] = list(cores[chave])
         log(f"openrgb: envios espaçados concluídos etapa={etapa}/{passos} duração={time.monotonic() - inicio_envio:.3f}s (SDK; sem confirmação física)")
@@ -375,7 +396,7 @@ def _ler_perfil(cli, log):
         return {}
 
 
-def _laco(estado, brilho_para, parar, log):
+def _laco(estado, brilho_para, parar, log, registro=None):
     cli = None
     zonas = []
     perfil = {}
@@ -385,7 +406,24 @@ def _laco(estado, brilho_para, parar, log):
     inicio_espera_midia = time.monotonic()
     avisou_espera_midia = False
     liberou_por_timeout = False
+    ultimo_estado_registrado = None
     while not parar.is_set():
+        if registro is not None:
+            api = estado.get("spotify_reproducao") or {}
+            contexto = {"modo": estado.get("modo_exibicao"),
+                        "musica_windows": estado.get("musica"),
+                        "tocando_windows": estado.get("tocando"),
+                        "reproducao_id": estado.get("reproducao_id"),
+                        "dispositivo_nome": api.get("dispositivo_nome"),
+                        "dispositivo_tipo": api.get("dispositivo_tipo"),
+                        "dispositivo_ativo": api.get("dispositivo_ativo"),
+                        "dispositivo_conhecido": api.get("dispositivo_conhecido"),
+                        "musica_api": api.get("musica"),
+                        "tocando_api": api.get("tocando")}
+            if contexto != ultimo_estado_registrado:
+                registro.registrar("estado_reproducao", **contexto,
+                                   consulta_api_utc_ms=api.get("consulta_utc_ms"))
+                ultimo_estado_registrado = contexto
         if not estado.get("midia_pronta", False) and not liberou_por_timeout:
             if time.monotonic() - inicio_espera_midia < 5.0:
                 if not avisou_espera_midia:
@@ -412,6 +450,9 @@ def _laco(estado, brilho_para, parar, log):
                 modos = [_modo_fixo(d) for d in devs]
                 zonas = _zonas(devs)
                 log(f"openrgb: controlando zonas {[k for k, _, _ in zonas]} {modos}")
+                if registro is not None:
+                    registro.registrar("conexao_sdk", dispositivos=todos, modos=modos,
+                                       zonas={k: len(z.leds) for k, _, z in zonas})
                 atual = None
                 escrito = {}
                 ultimo_erro = ""
@@ -423,6 +464,11 @@ def _laco(estado, brilho_para, parar, log):
                 inicio = atual if atual is not None else novo
                 passos = 1 if atual is None else FADE_PASSOS
                 log(f"openrgb diagnóstico: início fade passos={passos} musica={estado.get('musica')!r} cor_capa={estado.get('cor_capa')} cor_viva={estado.get('cor_viva')} alvo={ {k: v[0] if v else None for k, v in novo.items()} }")
+                if registro is not None:
+                    registro.registrar("inicio_fade", passos=passos,
+                                       musica_windows=estado.get("musica"),
+                                       spotify=estado.get("spotify_reproducao"),
+                                       alvo={k: v[0] if v else None for k, v in novo.items()})
                 
                 for i in range(1, passos + 1):
                     # Se a música mudar durante o fade, atualiza o alvo suavemente sem quebrar
@@ -432,7 +478,7 @@ def _laco(estado, brilho_para, parar, log):
                         novo = alvo_momento
 
                     cores = _misturar(inicio, novo, i / passos)
-                    if _enviar_etapa(zonas, cores, escrito, i, passos, parar, log):
+                    if _enviar_etapa(zonas, cores, escrito, i, passos, parar, log, registro):
                         return
 
                     if i < passos and parar.wait(FADE_INTERVALO):
@@ -440,8 +486,12 @@ def _laco(estado, brilho_para, parar, log):
                 
                 atual = novo
                 log("openrgb diagnóstico: fade concluído (envios SDK; sem confirmação física dos LEDs)")
+                if registro is not None:
+                    registro.registrar("fim_fade_sdk", passos=passos)
 
         except Exception as exc:
+            if registro is not None:
+                registro.registrar("erro_sdk", tipo=type(exc).__name__, erro=str(exc))
             if str(exc) != ultimo_erro:
                 ultimo_erro = str(exc)
                 log(f"openrgb: {exc}")
@@ -456,8 +506,16 @@ def _laco(estado, brilho_para, parar, log):
         parar.wait(CHECA_A_CADA)
 
 def iniciar(estado, brilho_para, parar, log):
+    registro = RegistroLEDs(log)
+
+    def executar():
+        try:
+            _laco(estado, brilho_para, parar, log, registro)
+        finally:
+            registro.fechar()
+
     t = threading.Thread(
-        target=_laco, args=(estado, brilho_para, parar, log), daemon=True
+        target=executar, daemon=True
     )
     t.start()
     return t

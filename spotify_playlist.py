@@ -67,12 +67,15 @@ def _ler_json_http(url, dados=None, cabecalhos=None, timeout=10):
 class SpotifyPlaylistWatcher:
     """Consulta reprodução, playlist e fila, reutilizando as capas baixadas."""
 
-    def __init__(self, ao_atualizar, log, ler_estado=None, ao_proxima=None, ao_capa_album=None):
+    def __init__(self, ao_atualizar, log, ler_estado=None, ao_proxima=None, ao_capa_album=None,
+                 ao_reproducao=None):
         self.ao_atualizar = ao_atualizar
         self.log = log
         self.ler_estado = ler_estado
         self.ao_proxima = ao_proxima
         self.ao_capa_album = ao_capa_album
+        self.ao_reproducao = ao_reproducao
+        self._ler_dispositivo = ao_reproducao is not None
         self._album_confirmado_para = None
         self._cache_capas_album = {}
         self._ultimo_erro_album = None
@@ -123,7 +126,34 @@ class SpotifyPlaylistWatcher:
             atual = None
             try:
                 token = self._obter_token()
-                atual = self._api("https://api.spotify.com/v1/me/player/currently-playing", token)
+                # A resposta completa inclui o dispositivo ativo. Substitui a
+                # consulta existente: não aumenta a frequência nem o nº normal
+                # de requisições e não controla a reprodução.
+                url_reproducao = "https://api.spotify.com/v1/me/player"
+                if not self._ler_dispositivo:
+                    url_reproducao += "/currently-playing"
+                try:
+                    atual = self._api(url_reproducao, token)
+                except urllib.error.HTTPError as exc:
+                    if not self._ler_dispositivo or exc.code != 403:
+                        raise
+                    self._ler_dispositivo = False
+                    self.log("Spotify registro: dispositivo indisponível; mantendo a consulta anterior.")
+                    atual = self._api("https://api.spotify.com/v1/me/player/currently-playing", token)
+                if self.ao_reproducao is not None:
+                    dispositivo = (atual or {}).get("device") or {}
+                    item = (atual or {}).get("item") or {}
+                    self.ao_reproducao({
+                        "consulta_utc_ms": round(time.time() * 1000),
+                        "timestamp_spotify": (atual or {}).get("timestamp"),
+                        "dispositivo_nome": dispositivo.get("name"),
+                        "dispositivo_tipo": dispositivo.get("type"),
+                        "dispositivo_ativo": dispositivo.get("is_active"),
+                        "dispositivo_conhecido": bool(dispositivo),
+                        "tocando": (atual or {}).get("is_playing"),
+                        "musica": item.get("name"),
+                        "artistas": [a.get("name") for a in item.get("artists", [])],
+                    })
                 contexto = (atual or {}).get("context") or {}
                 uri = contexto.get("uri") if contexto.get("type") == "playlist" else None
                 if not (atual or {}).get("is_playing"):

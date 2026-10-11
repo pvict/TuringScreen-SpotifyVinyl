@@ -9,6 +9,7 @@ __pycache__/
 *.bak*
 /tela.log
 /diagnostico_video/
+/diagnostico_leds/
 
 # Scripts de diagnóstico e testes manuais locais
 /teste_*.py
