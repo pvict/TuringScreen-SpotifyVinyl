@@ -1,0 +1,13 @@
+# Python 3.13 on Windows; versions used by the development setup.
+Pillow==12.3.0
+libusb-package==1.0.30.0
+openrgb-python==0.3.6
+pycaw==20260927
+comtypes==1.4.17
+winrt-runtime==3.2.1
+winrt-Windows.Foundation==3.2.1
+winrt-Windows.Foundation.Collections==3.2.1
+winrt-Windows.Media==3.2.1
+winrt-Windows.Media.Control==3.2.1
+winrt-Windows.Storage.Streams==3.2.1
+-e ./turing-smart-screen-cli-main
