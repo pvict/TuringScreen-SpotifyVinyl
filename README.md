@@ -9,6 +9,10 @@ A **Windows desktop app** that turns a round **2.1-inch, 480 × 480 TURZX / Turi
   <img src="docs/images/turzx-480x480-openrgb-setup.jpg" alt="Water cooler LCD with album artwork and synchronized OpenRGB lighting inside a PC" width="400">
 </p>
 
+<p align="center">
+  <img src="docs/images/turzx-spotify-true-colors.png" alt="True Colors by Cyndi Lauper on the round TURZX display, with pink RGB lighting" width="550">
+</p>
+
 https://github.com/user-attachments/assets/f876053e-42a8-4e0f-b7f9-6a048da14437
 
 24-second demo: pause/resume, background transitions, synchronized RGB and the playlist entrance.

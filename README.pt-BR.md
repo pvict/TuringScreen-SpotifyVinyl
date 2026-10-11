@@ -3,6 +3,10 @@
   <img src="docs/images/turzx-480x480-openrgb-setup.jpg" alt="Tela do water cooler com capa do álbum e iluminação OpenRGB sincronizada no PC" width="400">
 </p>
 
+<p align="center">
+  <img src="docs/images/turzx-spotify-true-colors.png" alt="True Colors, de Cyndi Lauper, na tela redonda TURZX com iluminação RGB rosa" width="550">
+</p>
+
 https://github.com/user-attachments/assets/f876053e-42a8-4e0f-b7f9-6a048da14437
 
 Demonstração de 24 segundos: pausa e retomada, transições de fundo, RGB sincronizado e entrada da playlist.
