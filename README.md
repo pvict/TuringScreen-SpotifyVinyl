@@ -1,6 +1,6 @@
 <p align="center">
-  <img src="docs/images/turzx-480x480-openrgb-setup.jpg" alt="Turing Vinyl running inside a PC with synchronized OpenRGB lighting" height="280">
-  <img src="docs/images/turzx-spotify-true-colors.png" alt="Cyndi Lauper True Colors on the USB display with matching pink RGB lighting" height="280">
+  <img src="docs/images/turzx-480x480-openrgb-setup.jpg" alt="Turing Vinyl running inside a PC with synchronized OpenRGB lighting" height="400">
+  <img src="docs/images/turzx-spotify-true-colors.png" alt="Cyndi Lauper True Colors on the USB display with matching pink RGB lighting" height="400">
 </p>
 
 https://github.com/user-attachments/assets/f876053e-42a8-4e0f-b7f9-6a048da14437
