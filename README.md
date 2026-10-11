@@ -2,7 +2,7 @@
 
 <p align="center"><a href="README.pt-BR.md">Português</a> · <a href="README.md">English</a></p>
 
-A Windows desktop app that turns a compatible **Turing Smart Screen / water cooler LCD** into a Spotify vinyl display, with album artwork, smooth playback animations and **OpenRGB** lighting.
+A Windows desktop app that turns a compatible **TURZX / Turing Smart Screen / water cooler LCD** into a Spotify vinyl display, with album artwork, smooth playback animations and **OpenRGB** lighting.
 
 <p align="center">
   <img src="docs/images/turing-vinyl-interface.png" alt="Turing Vinyl desktop interface with a rotating record, track details, Spotify controls and brightness slider" width="860">
