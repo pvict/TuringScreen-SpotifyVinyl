@@ -1,5 +1,4 @@
 <p align="center">
-  <img src="docs/images/turzx-480x480-spotify-vinyl.jpg" alt="Spotify album artwork as a vinyl record on a round TURZX 480x480 water cooler LCD" height="280">
   <img src="docs/images/turzx-480x480-openrgb-setup.jpg" alt="Turing Vinyl running inside a PC with synchronized OpenRGB lighting" height="280">
   <img src="docs/images/turzx-spotify-true-colors.png" alt="Cyndi Lauper True Colors on the USB display with matching pink RGB lighting" height="280">
 </p>
