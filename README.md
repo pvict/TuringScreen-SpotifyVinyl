@@ -102,6 +102,35 @@ Enable the **OpenRGB SDK server** at `127.0.0.1:6742`. The current preset contro
 
 Other controllers need their own configuration; RGB device selection is not yet available in the interface. Avoid having another RGB program control the same device simultaneously.
 
+### Bluetooth RGB strip (Lotus Lantern, experimental)
+
+Validated with one **ELK-BLEDDM** on Windows. Other controllers and strips have not been validated; the included calibration is a starting point for this setup.
+
+1. Install [Node.js](https://nodejs.org/) (18 or newer), download and extract [Lotus Lantern for Windows](https://github.com/razibit/Lotus-Lantern-for-Windows-PC). Open PowerShell in the Lotus folder and run `npm ci` once.
+2. Edit the Lotus `config.cmd`: set **your strip's** Bluetooth address in `set LED_DEVICE_UUID=AA11BB22CC33`, replacing the example with the 12 hexadecimal digits of the address. Keep the folder containing `config.cmd`, `src/ble-device.cjs` and `node_modules`.
+3. Turn on Bluetooth and the strip, and close the mobile app and other bridges. In **Turing Vinyl**, enable **Fita RGB**, select the Lotus folder and click **Iniciar**. Right-click **Fita RGB** to change the folder; hover to see the connection status.
+
+Turing Vinyl starts its own bridge on UDP `127.0.0.1:4048`. Keep the Lotus launcher closed for this integration; OpenRGB and Effects are not required for the strip. It follows the calibrated album color and screen brightness with smooth transitions, using the cached idle color during background video. Disabling **Fita RGB** leaves the last color on the strip.
+
+<details>
+<summary>Bluetooth address and calibration</summary>
+
+If Windows has detected the strip, find its address in PowerShell:
+
+```powershell
+Get-PnpDevice -Class Bluetooth |
+  Where-Object FriendlyName -Like 'ELK*' |
+  Select-Object FriendlyName, InstanceId
+```
+
+For `BTHLE\DEV_AA11BB22CC33\...`, the address is `AA11BB22CC33`. Each strip has its own address; if it is missing, check device detection in Windows Bluetooth settings.
+
+[calibracao_lotus.example.json](calibracao_lotus.example.json) supplies the default calibration automatically. To tune your strip, copy it to `calibracao_lotus.json` in the Turing Vinyl folder: this local file takes priority and is excluded from Git. `ganhos_rgb` balances the R/G/B channels; `ganhos_quentes` gradually adjusts warm tones. Each gain accepts values from 0 to 2; `[1, 1, 1]` makes that adjustment neutral. Changes are read while running.
+
+Connection logs are saved to `diagnostico_leds/lotus.log`, with UTC timestamps.
+
+</details>
+
 ## Need help?
 
 | Problem | Check |

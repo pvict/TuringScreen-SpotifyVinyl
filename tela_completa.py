@@ -1584,6 +1584,9 @@ def main():
     except ImportError as exc:
         log(f"LEDs desligados (openrgb-python não instalado): {exc}")
     
+    from leds_lotus import LotusLantern
+    lotus = LotusLantern(controles, estado, brilho_para, parar, log).iniciar()
+
     t_vol = threading.Thread(target=_laco_volume, daemon=True)
     t_vol.start()
 
@@ -1595,6 +1598,7 @@ def main():
     except KeyboardInterrupt:
         pass
     parar.set()
+    lotus.fechar()
     gaming.fechar()
     watcher_playlist.fechar()
     t.join(timeout=12)

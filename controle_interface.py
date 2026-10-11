@@ -15,7 +15,8 @@ from pathlib import Path
 
 MODOS = ("dinamico", "spotify", "video")
 PADRAO = {"modo": "dinamico", "brilho": None, "tela_ligada": True,
-          "video_ocioso": None, "video_ocioso_nome": "", "gaming": False}
+          "video_ocioso": None, "video_ocioso_nome": "", "gaming": False,
+          "lotus_ativo": False, "lotus_pasta": None}
 ARQUIVO = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "TuringScreen" / "interface.json"
 PREFIXO = "@TURING_UI@"
 
@@ -34,6 +35,12 @@ def validar(dados, anterior=None):
         config["tela_ligada"] = dados["tela_ligada"]
     if type(dados.get("gaming")) is bool:
         config["gaming"] = dados["gaming"]
+    if type(dados.get("lotus_ativo")) is bool:
+        config["lotus_ativo"] = dados["lotus_ativo"]
+    if "lotus_pasta" in dados:
+        pasta = dados["lotus_pasta"]
+        if pasta is None or (isinstance(pasta, str) and 0 < len(pasta) <= 2048 and "\x00" not in pasta):
+            config["lotus_pasta"] = pasta
     if "video_ocioso" in dados:
         caminho = dados["video_ocioso"]
         if caminho is None or (isinstance(caminho, str) and 0 < len(caminho) <= 2048
@@ -135,6 +142,7 @@ def iniciar_ponte(controles, estado, parar, log):
                     gaming_ativo=controles.gaming_ativo,
                     gaming_preparando=snap.get("gaming_preparando", False),
                     erro_gaming=snap.get("erro_gaming", ""),
+                    lotus=snap.get("lotus", {"status": "Desligada", "erro": ""}),
                 )
                 if capa is not ultima_capa:
                     ultima_capa = capa

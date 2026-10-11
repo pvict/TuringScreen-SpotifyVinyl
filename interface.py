@@ -23,6 +23,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageTk
 from aparencia_windows import preparar_janela, preparar_identidade_processo
 from controles_spotify import ControlesSpotify
 from fundo_usuario import ConversorFundo
+from leds_lotus import pasta_valida
 from controle_interface import (PREFIXO, brilho_horario, carregar, salvar,
                                 reservar_execucao, liberar_execucao)
 from estilo_interface import (CanvasSuave, FonteInterface, Dica, configurar_dpi,
@@ -723,12 +724,38 @@ class Janela(tk.Tk):
         self.gaming_botao = Botao(self, "Gaming", self.alternar_gaming, largura=154,
                                   altura=48, simbolo="gaming", dica="Usar só o fundo e reduzir o processamento")
         c.create_window(636, 656, window=self.gaming_botao, anchor="nw")
-        self.aviso = self.texto(64, 673, "", self.f_pequena, SECUNDARIO, width=530)
+        self.lotus_botao = Botao(self, "Fita RGB", self.alternar_lotus, largura=150,
+                                 altura=48, dica="Sincronizar a fita Bluetooth pelo Lotus Lantern")
+        c.create_window(44, 656, window=self.lotus_botao, anchor="nw")
+        self.lotus_botao.bind("<Button-3>", lambda e: self.escolher_lotus())
+        self.aviso = self.texto(210, 673, "", self.f_pequena, SECUNDARIO, width=402)
         self.fundo_painel = PainelFundo(self)
         self.fundo_painel_item = c.create_window(504, 77, window=self.fundo_painel,
                                                  anchor="nw", state="hidden")
         self.atualizar_controles()
         self.fundo_painel.atualizar()
+
+    def escolher_lotus(self):
+        pasta = filedialog.askdirectory(parent=self, title="Pasta do Lotus Lantern para Windows",
+                                         initialdir=self.config_usuario.get("lotus_pasta") or str(Path.home()))
+        if not pasta:
+            return False
+        if not pasta_valida(pasta):
+            self.mensagem("Escolha a pasta com config.cmd e src/ble-device.cjs.", "#966022")
+            return False
+        self.config_usuario["lotus_pasta"] = pasta
+        self.guardar()
+        return True
+
+    def alternar_lotus(self):
+        ativa = not self.config_usuario.get("lotus_ativo", False)
+        if ativa and not pasta_valida(self.config_usuario.get("lotus_pasta")):
+            if not self.escolher_lotus():
+                return
+        self.config_usuario["lotus_ativo"] = ativa
+        self.atualizar_controles()
+        self.guardar()
+        self.mensagem("Fita RGB conecta ao iniciar a exibição." if ativa and not self.rodando else "")
 
     def alternar_painel_fundo(self):
         self.fundo_painel_aberto = not self.fundo_painel_aberto
@@ -883,7 +910,7 @@ class Janela(tk.Tk):
             self.canvas.itemconfigure(self.hero_rotulo, fill=SECUNDARIO)
             self.seletor.atualizar_cor(self.cor_modo)
             for botao in (self.auto, self.power, self.iniciar, self.fundo_botao,
-                          self.gaming_botao):
+                          self.gaming_botao, self.lotus_botao):
                 botao.atualizar(cor=self.cor_modo)
             for botao in self.midia_botoes.values():
                 botao.atualizar(cor=self.cor_modo)
@@ -977,6 +1004,10 @@ class Janela(tk.Tk):
         gaming = self.config_usuario.get("gaming", False)
         self.gaming_botao.atualizar(texto="Gaming", selecionado=gaming, cor=self.cor_modo,
                                     dica="Desligar Gaming" if gaming else "Só o fundo, com menos processamento")
+        lotus = self.config_usuario.get("lotus_ativo", False)
+        self.lotus_botao.atualizar(selecionado=lotus, cor=self.cor_modo,
+                                   dica="Desligar sincronização da fita. Botão direito: escolher pasta."
+                                   if lotus else "Sincronizar fita RGB. Botão direito: escolher pasta.")
         self.seletor.dica.texto = ("Modo retomado ao sair de Gaming." if gaming
                                    else MODOS[self.seletor.indice][2])
         self.canvas.itemconfigure(self.modo_dica, text="")
@@ -1160,8 +1191,14 @@ class Janela(tk.Tk):
                 self.atualizar_disco()
             except (ValueError, OSError):
                 pass
+        lotus = dados.get("lotus") or {}
+        if self.config_usuario.get("lotus_ativo"):
+            self.lotus_botao.atualizar(dica="Fita RGB: " + lotus.get("status", "Conectando…") +
+                                      ". Botão direito: escolher pasta.")
         if dados.get("erro"):
             self.mensagem(dados["erro"], "#966022")
+        elif self.config_usuario.get("lotus_ativo") and lotus.get("erro"):
+            self.mensagem(lotus["erro"], "#966022")
         elif dados.get("erro_gaming"):
             self.mensagem(dados["erro_gaming"], "#966022")
         elif self.config_usuario.get("gaming") and dados.get("gaming_preparando"):

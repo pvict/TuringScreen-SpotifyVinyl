@@ -100,6 +100,35 @@ Ative o **servidor SDK do OpenRGB** em `127.0.0.1:6742`. O preset atual controla
 
 Outras controladoras precisam de configuração própria; a seleção de dispositivos RGB ainda não está disponível na interface. Evite outro programa RGB controlando o mesmo dispositivo simultaneamente.
 
+### Fita RGB Bluetooth (Lotus Lantern, experimental)
+
+Validada em uma **ELK-BLEDDM**, no Windows. Outras controladoras e fitas ainda não foram validadas; a calibração incluída é uma base para esse setup.
+
+1. Instale [Node.js](https://nodejs.org/) (18 ou superior), baixe e extraia o [Lotus Lantern para Windows](https://github.com/razibit/Lotus-Lantern-for-Windows-PC). Na pasta do Lotus, abra o PowerShell e execute `npm ci` uma única vez.
+2. Edite o `config.cmd` do Lotus: coloque o endereço Bluetooth **da sua fita** em `set LED_DEVICE_UUID=AA11BB22CC33`, substituindo o exemplo pelos 12 dígitos do endereço. Mantenha a pasta com `config.cmd`, `src/ble-device.cjs` e `node_modules`.
+3. Com Bluetooth e fita ligados, feche o Lotus do celular e outras pontes. No **Turing Vinyl**, ative **Fita RGB**, escolha a pasta do Lotus e clique em **Iniciar**. O botão direito em **Fita RGB** permite trocar a pasta; passe o mouse para ver o estado da conexão.
+
+O Turing Vinyl inicia sua própria ponte em UDP `127.0.0.1:4048`. Para esta integração, deixe o iniciador do Lotus fechado; OpenRGB e Effects não são necessários para a fita. Ela acompanha a cor calibrada do álbum e o brilho da tela, com transições suaves; no vídeo de fundo usa a cor ociosa do cache. Desativar **Fita RGB** mantém a última cor.
+
+<details>
+<summary>Endereço Bluetooth e calibração</summary>
+
+Se o Windows já detectou a fita, consulte o endereço no PowerShell:
+
+```powershell
+Get-PnpDevice -Class Bluetooth |
+  Where-Object FriendlyName -Like 'ELK*' |
+  Select-Object FriendlyName, InstanceId
+```
+
+Em `BTHLE\DEV_AA11BB22CC33\...`, o endereço é `AA11BB22CC33`. Cada fita tem o seu; se ela não aparecer, confira a detecção nas configurações de Bluetooth do Windows.
+
+A base em [calibracao_lotus.example.json](calibracao_lotus.example.json) é usada automaticamente. Para ajustar sua fita, copie esse arquivo como `calibracao_lotus.json` na pasta do Turing Vinyl: ele tem prioridade e fica fora do Git. `ganhos_rgb` equilibra os canais R/G/B; `ganhos_quentes` ajusta gradualmente a faixa de tons quentes. Cada ganho aceita valores de 0 a 2; `[1, 1, 1]` deixa o respectivo ajuste neutro. As alterações são lidas durante a execução.
+
+O registro da conexão fica em `diagnostico_leds/lotus.log`; os horários desse arquivo estão em UTC.
+
+</details>
+
 ## Ajuda rápida
 
 | Problema | O que conferir |

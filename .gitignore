@@ -10,6 +10,7 @@ __pycache__/
 /tela.log
 /diagnostico_video/
 /diagnostico_leds/
+/calibracao_lotus.json
 
 # Scripts de diagnóstico e testes manuais locais
 /teste_*.py
