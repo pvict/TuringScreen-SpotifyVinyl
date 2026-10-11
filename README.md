@@ -1,35 +1,33 @@
-<h1 align="center">Turing Vinyl</h1>
-
-<p align="center"><a href="README.pt-BR.md">Português</a> · <a href="README.md">English</a></p>
-
-A Windows desktop app that turns a compatible **TURZX / Turing Smart Screen / water cooler LCD** into a Spotify vinyl display, with album artwork, smooth playback animations and **OpenRGB** lighting.
-
 <p align="center">
-  <img src="docs/images/turing-vinyl-interface.png" alt="Turing Vinyl desktop interface with a rotating record, track details, Spotify controls and brightness slider" width="860">
+  <img src="docs/images/turzx-480x480-spotify-vinyl.jpg" alt="Spotify vinyl on a round TURZX 480 × 480 USB display mounted on a water cooler" width="400">
+  <img src="docs/images/turzx-480x480-openrgb-setup.jpg" alt="Water cooler LCD with album artwork and synchronized OpenRGB lighting inside a PC" width="400">
 </p>
-
-The record slows down on pause and accelerates on resume. Track changes flip the artwork; playlist and **Up next** animations keep the same visual style. The interface accent follows the album cover.
-
-## Demo
 
 https://github.com/user-attachments/assets/f876053e-42a8-4e0f-b7f9-6a048da14437
 
-The 24-second demo shows pause/resume, background transitions, synchronized RGB and the playlist entrance.
+24-second demo: pause/resume, background transitions, synchronized RGB and the playlist entrance.
 
-<details>
-<summary>View the real setup</summary>
+<h1 align="center">Turing Vinyl — Spotify for TURZX</h1>
 
-<p align="center">
-  <img src="docs/images/turing-vinyl-setup.png" alt="Turing Vinyl running on a PC's water cooler display with synchronized lighting" width="650">
-</p>
+<p align="center"><a href="README.pt-BR.md">Português</a> · <a href="README.md">English</a></p>
 
-</details>
+A **Windows desktop app** that turns a round **2.1-inch, 480 × 480 TURZX / Turing Smart Screen USB display** into an animated **Spotify vinyl record**, with album artwork and **OpenRGB** lighting. Built for a compatible water cooler LCD or secondary PC display.
+
+The record slows down on pause and accelerates on resume. Track changes flip the artwork; playlist and **Up next** cards share the same style. The app follows the album colors and provides brightness, playback and custom background controls.
+
+**Jump to:** [Compatible display](#compatible-display) · [Install](#install) · [Use the app](#use-the-app) · [Integrations](#optional-integrations) · [Help](#need-help)
+
+## Compatible display
+
+The photographed setup uses a round **2.1-inch, 480 × 480 USB IPS display**, sold as *“2.1 Inch IPS Secondary Screen Water-Cooled Round Screen”*. The seller's customization software is **TURZX**.
+
+- [Display listing on AliExpress](https://pt.aliexpress.com/item/1005006523861753.html).
+- Turing Vinyl communicates with the display directly over USB; TURZX is not required to use this app.
+- The current protocol uses USB device ID `1CBE:0088`. Similar-looking displays may use a different protocol; 2.8-inch models and other displays have not been validated.
 
 ## Install
 
 **Requirements:** Windows 10/11, Python **3.13** with Tkinter (the version used in this setup), a compatible USB display, and an **NVIDIA GPU with NVENC** and its driver. Install FFmpeg and FFprobe on `PATH`, with the `h264_nvenc` and `libx264` encoders.
-
-Compatibility with other displays and RGB controllers has not been validated. The current USB protocol uses device ID `1CBE:0088` and a 480 × 480 image.
 
 1. Download the repository using **Code → Download ZIP** and extract it.
 2. Open PowerShell in the extracted folder and run this one-time setup:
@@ -50,6 +48,10 @@ py -3.13 -m venv .venv
 Keep the extracted folder and its bundled videos in place: the shortcut uses this installation.
 
 ## Use the app
+
+<p align="center">
+  <img src="docs/images/turing-vinyl-interface.png" alt="Turing Vinyl Windows desktop app with Spotify vinyl, playback controls, display modes and brightness slider" width="860">
+</p>
 
 1. Connect the display by USB and open **Spotify for Windows**.
 2. Open **Turing Vinyl**, choose a mode and click **Iniciar** (Start).

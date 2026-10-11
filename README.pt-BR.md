@@ -1,35 +1,33 @@
-<h1 align="center">Turing Vinyl</h1>
-
-<p align="center"><a href="README.pt-BR.md">Português</a> · <a href="README.md">English</a></p>
-
-Um app para Windows que transforma uma **Turing Smart Screen / tela de water cooler compatível** em um vinil do Spotify, com capas de álbuns, animações suaves e iluminação pelo **OpenRGB**.
-
 <p align="center">
-  <img src="docs/images/turing-vinyl-interface.png" alt="Interface do Turing Vinyl com disco girando, informações da música, controles do Spotify e ajuste de brilho" width="860">
+  <img src="docs/images/turzx-480x480-spotify-vinyl.jpg" alt="Vinil do Spotify na tela USB redonda TURZX de 480 × 480 instalada no water cooler" width="400">
+  <img src="docs/images/turzx-480x480-openrgb-setup.jpg" alt="Tela do water cooler com capa do álbum e iluminação OpenRGB sincronizada no PC" width="400">
 </p>
-
-O disco desacelera ao pausar e acelera ao retomar. As trocas de música viram a capa; as animações de playlist e **A seguir** mantêm o mesmo estilo. A cor de realce da interface acompanha a capa do álbum.
-
-## Demonstração
 
 https://github.com/user-attachments/assets/f876053e-42a8-4e0f-b7f9-6a048da14437
 
-O vídeo de 24 segundos mostra pausa e retomada, transições de fundo, RGB sincronizado e a entrada da playlist.
+Demonstração de 24 segundos: pausa e retomada, transições de fundo, RGB sincronizado e entrada da playlist.
 
-<details>
-<summary>Ver o setup real</summary>
+<h1 align="center">Turing Vinyl — Spotify para TURZX</h1>
 
-<p align="center">
-  <img src="docs/images/turing-vinyl-setup.png" alt="Turing Vinyl na tela do water cooler de um PC com iluminação sincronizada" width="650">
-</p>
+<p align="center"><a href="README.pt-BR.md">Português</a> · <a href="README.md">English</a></p>
 
-</details>
+Um app para **Windows** que transforma uma tela USB redonda **TURZX / Turing Smart Screen de 2,1 polegadas e 480 × 480** em um vinil animado do **Spotify**, com capas de álbuns e iluminação **OpenRGB**. Ideal para a tela LCD do water cooler ou uma tela secundária compatível no PC.
+
+O disco desacelera ao pausar e acelera ao retomar. As trocas de música viram a capa; playlist e **A seguir** aparecem no mesmo estilo. A interface acompanha as cores do álbum e permite ajustar brilho, controlar a música e escolher o vídeo de fundo.
+
+**Navegação:** [Tela compatível](#tela-compatível) · [Instalação](#instalação) · [Usando o app](#usando-o-app) · [Integrações](#integrações-opcionais) · [Ajuda](#ajuda-rápida)
+
+## Tela compatível
+
+O setup das fotos usa a tela IPS USB redonda de **2,1″, 480 × 480**, vendida como *“2.1 Inch IPS Secondary Screen Water-Cooled Round Screen”*. O aplicativo indicado pelo vendedor para customização é o **TURZX**.
+
+- [Anúncio da tela no AliExpress](https://pt.aliexpress.com/item/1005006523861753.html).
+- O Turing Vinyl se comunica diretamente com a tela por USB; o TURZX não é necessário para usar este app.
+- O protocolo atual usa o identificador USB `1CBE:0088`. Telas visualmente iguais podem usar outro protocolo; modelos de 2,8″ e outras telas ainda não foram validados.
 
 ## Instalação
 
 **Requisitos:** Windows 10/11, Python **3.13** com Tkinter (versão usada neste setup), tela USB compatível e **GPU NVIDIA com NVENC** e driver instalado. Instale FFmpeg e FFprobe no `PATH`, com os codificadores `h264_nvenc` e `libx264`.
-
-A compatibilidade com outras telas e controladoras RGB ainda não foi validada. O protocolo USB atual usa o identificador `1CBE:0088` e imagem de 480 × 480.
 
 1. Baixe o repositório em **Code → Download ZIP** e extraia a pasta.
 2. Abra o PowerShell nessa pasta e execute a instalação uma única vez:
@@ -50,6 +48,10 @@ py -3.13 -m venv .venv
 Mantenha a pasta extraída e os vídeos incluídos no lugar: o atalho usa essa instalação.
 
 ## Usando o app
+
+<p align="center">
+  <img src="docs/images/turing-vinyl-interface.png" alt="Interface do Turing Vinyl para Windows com vinil do Spotify, controles de música, modos de exibição e slider de brilho" width="860">
+</p>
 
 1. Conecte a tela por USB e abra o **Spotify para Windows**.
 2. Abra o **Turing Vinyl**, escolha um modo e clique em **Iniciar**.
