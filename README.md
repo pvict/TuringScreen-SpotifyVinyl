@@ -5,8 +5,8 @@
 A **Windows desktop app** that turns a round **2.1-inch, 480 × 480 TURZX / Turing Smart Screen USB display** into an animated **Spotify vinyl record**, with album artwork and **OpenRGB** lighting. Built for a compatible water cooler LCD or secondary PC display.
 
 <p align="center">
-  <img src="docs/images/turzx-480x480-spotify-vinyl.jpg" alt="Spotify vinyl on a round TURZX 480 × 480 USB display mounted on a water cooler" width="400">
   <img src="docs/images/turzx-480x480-openrgb-setup.jpg" alt="Water cooler LCD with album artwork and synchronized OpenRGB lighting inside a PC" width="400">
+  <img src="docs/images/turzx-480x480-spotify-vinyl.jpg" alt="Spotify vinyl on a round TURZX 480 × 480 USB display mounted on a water cooler" width="400">
 </p>
 
 <p align="center">
