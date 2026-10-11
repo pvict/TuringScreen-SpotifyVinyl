@@ -120,6 +120,31 @@ class FonteInterface:
         return math.ceil(fonte.getlength(str(texto)) / ESCALA_TEXTO)
 
 
+@lru_cache(maxsize=1)
+def _familia_campo():
+    """Disponibiliza a DM Sans aos campos nativos, somente neste processo."""
+    if os.name == "nt":
+        caminho = RAIZ / "assets" / "fonts" / "dmsans.ttf"
+        try:
+            gdi = ctypes.WinDLL("gdi32", use_last_error=True)
+            gdi.AddFontResourceExW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint, ctypes.c_void_p]
+            gdi.AddFontResourceExW.restype = ctypes.c_int
+            if gdi.AddFontResourceExW(str(caminho), 0x10, None):  # FR_PRIVATE
+                # Nome de família legado (name ID 1) do TTF incluído. O Tk
+                # usa este nome, enquanto o FreeType reconhece "DM Sans".
+                return "DM Sans 9pt"
+        except (OSError, AttributeError):
+            pass
+    return "Segoe UI"  # Mesma alternativa usada quando faltam as fontes.
+
+
+def fonte_campo(fonte):
+    # Tamanho negativo no Tk indica pixels, como no texto desenhado pela
+    # interface; valores positivos seriam pontos e ficariam maiores.
+    return (_familia_campo(), -round(fonte.tamanho),
+            "bold" if fonte.peso >= 600 else "normal")
+
+
 def _quebrar_texto(texto, fonte, largura):
     if not largura:
         return texto

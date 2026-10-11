@@ -4,6 +4,8 @@ const { createSocket } = require('node:dgram');
 const { join } = require('node:path');
 const { appendFileSync, mkdirSync, readFileSync, statSync } = require('node:fs');
 const { createRequire } = require('node:module');
+const { createInterface } = require('node:readline');
+const { LotusDevices } = require('./lotus_devices.cjs');
 const fromLotus = createRequire(join(process.argv[2], 'src', 'ble-device.cjs'));
 const Peripheral = fromLotus('noble/lib/peripheral');
 const noble = require(join(process.argv[2], 'node_modules', 'noble-winrt'));
@@ -13,6 +15,7 @@ const server = createSocket('udp4');
 let pending = null;
 let busy = false;
 let ready = false;
+let lightPower = null;
 let lastStatus = '';
 let nextConnect = 0;
 let closing = false;
@@ -78,6 +81,7 @@ function calibrate(color) {
   }
   // Comparação manual autorizada: uma cor estática, sem sequência automática.
   // Expira e retorna às cores da música mesmo que a calibração seja interrompida.
+  if (color.every(value => value === 0)) return [0, 0, 0];
   if (fixedColor && Date.now() < fixedUntil) return [...fixedColor];
   // O equilíbrio físico dos canais vale para todas as cores. A referência
   // do álbum já vem calibrada do Python, como nos LEDs do PC.
@@ -122,6 +126,32 @@ console.log = (...args) => {
   originalLog(...args);
 };
 const seen = new Set();
+const devices = new LotusDevices(noble, device, Peripheral, process.argv[2], process.argv[3], status, record);
+
+async function bleCommand(operation) {
+  let timeout;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => {
+          const error = new Error('A fita não respondeu ao comando Bluetooth');
+          error.code = 'BLE_TIMEOUT';
+          reject(error);
+        }, 12000);
+      }),
+    ]);
+  } finally { clearTimeout(timeout); }
+}
+
+async function setLightPower(on) {
+  // Mesmo comando do Device do Lotus, com rejeições de escrita preservadas.
+  await bleCommand(device.waitForWriteReady());
+  await bleCommand(device.writeAsync(Buffer.from(
+    on ? '7e0404010001ff00ef' : '7e0404000000ff00ef', 'hex')));
+  device.power = on;
+  lightPower = on;
+}
 noble.prependListener('discover', peripheral => {
   // Device compara a propriedade legada uuid em minúsculas. WinRT pode
   // fornecer hexadecimal maiúsculo. id permanece intacto para o transporte.
@@ -134,11 +164,12 @@ noble.prependListener('discover', peripheral => {
 });
 
 function status(value, error = '') {
-  const key = `${value}:${error}`;
+  const details = devices.info();
+  const key = `${value}:${error}:${JSON.stringify(details)}`;
   if (key === lastStatus) return;
   lastStatus = key;
   record(value + (error ? ': ' + error : ''));
-  console.log('@LOTUS@' + JSON.stringify({ status: value, erro: error }));
+  console.log('@LOTUS@' + JSON.stringify({ status: value, erro: error, ...details }));
 }
 
 server.on('message', (msg, remote) => {
@@ -169,6 +200,7 @@ const timer = setInterval(async () => {
     }
     if (!device.connected) {
       ready = false;
+      lightPower = null;
       firstColor = true;
       if (device.connecting) return;
       if (Date.now() < nextConnect) return;
@@ -176,44 +208,38 @@ const timer = setInterval(async () => {
       nextConnect = Date.now() + 10000;
       // O Windows já conhece o endereço configurado. A fita pode deixar de
       // anunciar durante o pareamento; não exigir um novo anúncio para GATT.
-      if (!device.peripheral) {
-        noble.stopScanning();
-        const id = device.uuid;
-        if (!noble._peripherals[id]) {
-          const address = id.match(/.{2}/g).join(':');
-          noble._peripherals[id] = new Peripheral(noble, id, address, 'public', true, {}, 0);
-          noble._services[id] = {};
-          noble._characteristics[id] = {};
-          noble._descriptors[id] = {};
-        }
-        device.peripheral = noble._peripherals[id];
-        record('Conexão direta ao endereço configurado: ' + id);
-      }
-      await device.connect(0);
-      if (!device.connected) {
-        status('Desconectada', 'Fita não encontrada. Confira Bluetooth e feche o Lotus Lantern no celular.');
+      if (!await devices.connect()) {
+        nextConnect = Date.now() + 10000;
         return;
       }
     }
-    if (!ready) {
-      // Liga a fita e remove um brilho previamente reduzido no app do celular;
-      // o brilho do Turing Vinyl já está incorporado nos canais RGB enviados.
-      await device.set_power(true);
-      await new Promise(resolve => setTimeout(resolve, 200));
-      if (closing) return;
-      await device.set_brightness(100);
-      ready = true;
-      status('Conectada');
-    }
     if (pending) {
       const originalColor = pending;
-      const color = calibrate(originalColor);
       pending = null;
+      const on = originalColor.some(value => value > 0);
+      if (!ready || lightPower !== on) {
+        // Não liga a fita ao conectar enquanto o brilho principal está em
+        // zero. O comando de energia evita luz residual em RGB 0,0,0.
+        await setLightPower(on);
+        if (closing) return;
+        if (on) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          if (closing) return;
+          await bleCommand(device.set_brightness(100));
+        }
+        ready = true;
+      }
+      if (!on) {
+        device.debounceDisconnect();
+        status('Conectada');
+        return;
+      }
+      const color = calibrate(originalColor);
       // Usa writeAsync diretamente para conservar rejeições de escrita:
       // set_rgb do Device absorve erros na fila e poderia anunciar sucesso.
-      await device.waitForWriteReady();
+      await bleCommand(device.waitForWriteReady());
       if (closing) return;
-      await device.writeAsync(Buffer.from([0x7e, 0x07, 0x05, 0x03, ...color, 0x10, 0xef]));
+      await bleCommand(device.writeAsync(Buffer.from([0x7e, 0x07, 0x05, 0x03, ...color, 0x10, 0xef])));
       if (calibrationWritePending) {
         record('Cor enviada após ajuste: origem=' + originalColor.join(',') + '; BLE=' + color.join(','));
         calibrationWritePending = false;
@@ -228,22 +254,65 @@ const timer = setInterval(async () => {
   } catch (error) {
     status('Indisponível', 'Falha Bluetooth: ' + error.message);
     ready = false;
+    devices.invalidate();
+    nextConnect = Date.now() + 10000;
+    if (error.code === 'BLE_TIMEOUT') {
+      process.exitCode = 1;
+      shutdown();
+    }
   } finally {
     busy = false;
   }
 }, 200);
 
-function shutdown() {
+async function shutdown(apagar = false) {
   if (closing) return;
   closing = true;
   clearInterval(timer);
   try { server.close(); } catch {}
-  try { if (device.peripheral) device.peripheral.disconnect(); } catch {}
-  // Mantém a última cor; não apaga a fita ao encerrar a exibição.
-  setTimeout(() => process.exit(process.exitCode || 0), 100);
+  // A janela nunca espera pelo Bluetooth. Este prazo limita somente a ponte
+  // quando o usuário solicita desligar a fita pelo botão do painel.
+  const deadline = setTimeout(() => {
+    if (apagar) record('Desligamento da fita sem confirmação: Bluetooth não respondeu a tempo.');
+    process.exit(process.exitCode || 0);
+  }, 1500);
+  try {
+    if (apagar) {
+      const limite = Date.now() + 800;
+      while (busy && Date.now() < limite) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      if (!busy && device.connected) {
+        await setLightPower(false);
+        record('Fita desligada pelo painel.');
+      } else {
+        record('Desligamento da fita sem confirmação: conexão Bluetooth indisponível.');
+      }
+    }
+  } catch (error) {
+    record('Falha ao desligar a fita: ' + error.message);
+  } finally {
+    clearTimeout(deadline);
+    devices.close();
+    // Encerrar a exibição conserva a última cor. Só o comando explícito do
+    // botão da fita solicita desligar antes de liberar a conexão.
+    setTimeout(() => process.exit(process.exitCode || 0), 100);
+  }
 }
-process.stdin.resume();
-process.stdin.on('end', shutdown);
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+const input = createInterface({ input: process.stdin });
+input.on('line', line => {
+  if (line.length > 512) return;
+  try {
+    const command = JSON.parse(line);
+    if (command.desligar === true) {
+      shutdown(true);
+    } else if (command.endereco) {
+      devices.select(command.endereco);
+      nextConnect = 0;
+    }
+  } catch {}
+});
+input.on('close', () => shutdown());
+process.on('SIGTERM', () => shutdown());
+process.on('SIGINT', () => shutdown());
 server.bind(4048, '127.0.0.1');

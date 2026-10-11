@@ -37,7 +37,7 @@ def _config_ponte(pasta):
     match = re.search(r'^\s*set\s+"?LED_DEVICE_UUID=([0-9a-fA-F:-]+)"?\s*$', config, re.M | re.I)
     uuid = re.sub(r"[:-]", "", match[1]) if match else ""
     if not re.fullmatch(r"[0-9a-fA-F]{12}", uuid):
-        raise ValueError("Endereço Bluetooth inválido em config.cmd do Lotus Lantern.")
+        uuid = ""  # A descoberta automática também atende instalações novas.
     node = shutil.which("node")
     if node is None:
         raise ValueError("Node.js não encontrado. Instale as dependências do Lotus Lantern.")
@@ -71,9 +71,10 @@ class LotusLantern:
         except (OSError, ValueError, TypeError, IndexError):
             pass
 
-    def status(self, texto, erro=""):
+    def status(self, texto, erro="", **detalhes):
         self._status = texto
-        self.estado["lotus"] = {"status": texto, "erro": erro}
+        anterior = self.estado.get("lotus") or {}
+        self.estado["lotus"] = {**anterior, "status": texto, "erro": erro, **detalhes}
 
     def iniciar(self):
         self._thread = threading.Thread(target=self._executar, name="LotusCores", daemon=True)
@@ -97,6 +98,7 @@ class LotusLantern:
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._socket.setblocking(False)
         self._chave_cor = None
+        self._endereco_selecionado = None
         self._ultimo_envio = 0.0
         self.log(f"lotus: ponte BLE iniciada; endereço={uuid}; OpenRGB preservado")
 
@@ -109,7 +111,8 @@ class LotusLantern:
                         try:
                             dados = json.loads(linha[len("@LOTUS@"):])
                             anterior = self._status
-                            self.status(dados["status"], dados.get("erro", ""))
+                            self.status(dados["status"], dados.get("erro", ""),
+                                        **{k: dados[k] for k in ("endereco", "nome", "candidatos") if k in dados})
                             if dados.get("erro"):
                                 self.log("lotus: " + dados["erro"][:240])
                             elif dados["status"] != anterior:
@@ -123,10 +126,15 @@ class LotusLantern:
                     self.status("Desconectada", "A ponte Bluetooth encerrou; verifique o Lotus Lantern.")
         threading.Thread(target=ler, name="LotusEstado", daemon=True).start()
 
-    def _fechar(self):
+    def _fechar(self, apagar=False):
         proc, self.proc = self.proc, None
         if proc is not None:
             try:
+                if apagar and proc.poll() is None:
+                    # Comando privado para desligar fisicamente a fita antes
+                    # de liberar a conexão; nunca passa pelo OpenRGB.
+                    proc.stdin.write(json.dumps({"desligar": True}) + "\n")
+                    proc.stdin.flush()
                 proc.stdin.close()  # encerramento solicitado pelo pipe privado
                 proc.wait(timeout=2)
             except (OSError, ValueError, subprocess.TimeoutExpired):
@@ -136,6 +144,12 @@ class LotusLantern:
                         proc.wait(timeout=1)
                     except subprocess.TimeoutExpired:
                         proc.kill()
+            finally:
+                if proc.stdin is not None:
+                    try:
+                        proc.stdin.close()
+                    except (OSError, ValueError):
+                        pass
             if proc.stdout is not None:
                 proc.stdout.close()
         if self._socket is not None:
@@ -143,6 +157,17 @@ class LotusLantern:
             self._socket = None
 
     def _cor_alvo(self):
+        config = self.controles.config
+        if not config["tela_ligada"]:
+            # O controle principal prevalece também sobre o brilho manual
+            # da fita. As preferências dela ficam preservadas para a volta.
+            return (0, 0, 0)
+        if config.get("lotus_modo") == "manual":
+            cor = config.get("lotus_cor", [255, 255, 255])
+            brilho = config.get("lotus_brilho")
+            if brilho is None:
+                brilho = self.brilho_para(datetime.datetime.now())
+            return tuple(round(c * brilho / 100) for c in cor)
         snap = dict(self.estado)
         midia = snap
         if snap.get("modo_exibicao") == "spotify" and snap.get("musica") is None:
@@ -167,7 +192,10 @@ class LotusLantern:
                 self._cor_pc = self._calibrar_pc(cor)
                 self.log(f"lotus: cor da capa={cor}; referência do PC={self._cor_pc}")
             cor = self._cor_pc
-        brilho = max(0, min(100, self.brilho_para(datetime.datetime.now()))) / 100
+        brilho = config.get("lotus_brilho")
+        if brilho is None:
+            brilho = self.brilho_para(datetime.datetime.now())
+        brilho = max(0, min(100, brilho)) / 100
         return tuple(int(max(0, min(255, c)) * brilho) for c in cor)
 
     def _enviar(self, cor):
@@ -190,7 +218,7 @@ class LotusLantern:
                 try:
                     if not ativa:
                         if self.proc is not None:
-                            self._fechar()
+                            self._fechar(apagar=True)
                         self.status("Desligada")
                         pasta_ativa, proxima_tentativa = None, 0.0
                     else:
@@ -204,12 +232,21 @@ class LotusLantern:
                             proxima_tentativa = agora + 10.0
                             self._abrir(pasta)
                             ultima_falha = ""
-                        if self.proc is not None and self.estado.get("midia_pronta", False):
+                        if self.proc is not None:
+                            endereco = config.get("lotus_endereco")
+                            if endereco != self._endereco_selecionado:
+                                self.proc.stdin.write(json.dumps({"endereco": endereco}) + "\n")
+                                self.proc.stdin.flush()
+                                self._endereco_selecionado = endereco
+                        if self.proc is not None and (self.estado.get("midia_pronta", False)
+                                                      or config.get("lotus_modo") == "manual"
+                                                      or not config["tela_ligada"]):
                             alvo = self._cor_alvo()
                             if alvo != self._chave_cor:
                                 self._inicio_cor = self._base_cor if self._chave_cor is not None else alvo
                                 self._chave_cor, self._inicio_fade = alvo, agora
-                            t = min(1.0, (agora - self._inicio_fade) / FADE)
+                            duracao = 0.3 if config.get("lotus_modo") == "manual" else FADE
+                            t = min(1.0, (agora - self._inicio_fade) / duracao)
                             peso = (1 - math.cos(t * math.pi)) / 2
                             cor = tuple(round(a + (b - a) * peso) for a, b in zip(self._inicio_cor, alvo))
                             # Keepalive impede que o bridge desconecte por inatividade.

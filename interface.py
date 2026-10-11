@@ -24,6 +24,7 @@ from aparencia_windows import preparar_janela, preparar_identidade_processo
 from controles_spotify import ControlesSpotify
 from fundo_usuario import ConversorFundo
 from leds_lotus import pasta_valida
+from painel_lotus import PainelLotus
 from controle_interface import (PREFIXO, brilho_horario, carregar, salvar,
                                 reservar_execucao, liberar_execucao)
 from estilo_interface import (CanvasSuave, FonteInterface, Dica, configurar_dpi,
@@ -153,11 +154,13 @@ def disco_base():
 
 class Botao(CanvasSuave):
     def __init__(self, master, texto, comando, largura=150, altura=40,
-                 primario=False, fundo=FUNDO, simbolo=None, dica="", midia=False):
+                 primario=False, fundo=FUNDO, simbolo=None, dica="", midia=False,
+                 mostrar_ponto=True, mostrar_foco=True):
         super().__init__(master, width=largura, height=altura, bg=fundo,
                          highlightthickness=0, bd=0, takefocus=True, cursor="hand2")
         self.texto, self.comando, self.primario = texto, comando, primario
         self.midia = midia
+        self.mostrar_ponto, self.mostrar_foco = mostrar_ponto, mostrar_foco
         self.cor = PRATA
         self.simbolo, self.selecionado = simbolo, False
         self.ativo, self.hover = True, False
@@ -184,7 +187,8 @@ class Botao(CanvasSuave):
             self.comando()
         return "break"
 
-    def atualizar(self, texto=None, ativo=None, cor=None, selecionado=None, simbolo=None, dica=None):
+    def atualizar(self, texto=None, ativo=None, cor=None, selecionado=None, simbolo=None, dica=None,
+                  mostrar_ponto=None):
         if texto is not None:
             self.texto = texto
         if ativo is not None:
@@ -197,7 +201,10 @@ class Botao(CanvasSuave):
             self.simbolo = simbolo
         if dica is not None:
             self.dica.texto = dica
-        chave = (self.texto, self.ativo, self.cor, self.selecionado, self.simbolo, self.primario)
+        if mostrar_ponto is not None:
+            self.mostrar_ponto = mostrar_ponto
+        chave = (self.texto, self.ativo, self.cor, self.selecionado, self.simbolo,
+                 self.primario, self.mostrar_ponto)
         if chave != self._ultima_pintura:
             self.desenhar()
 
@@ -237,12 +244,15 @@ class Botao(CanvasSuave):
         if self.texto:
             self.coords(self.rotulo_item, x, h / 2)
         self.itemconfigure(self.rotulo_item, text=self.texto, font=self.fonte, fill=tinta)
-        self.itemconfigure(self.ponto_item, fill=self.cor, state="normal" if self.selecionado else "hidden")
+        self.itemconfigure(self.ponto_item, fill=self.cor,
+                           state="normal" if self.selecionado and self.mostrar_ponto else "hidden")
         if self.midia:
             self.coords(self.ponto_item, w / 2 - 2, h - 11, w / 2 + 2, h - 7)
         self.itemconfigure(self.foco_item, fill=self.cor,
-                            state="normal" if not self.selecionado and self.focus_get() is self else "hidden")
-        self._ultima_pintura = (self.texto, self.ativo, self.cor, self.selecionado, self.simbolo, self.primario)
+                            state="normal" if self.mostrar_foco and not self.selecionado
+                            and self.focus_get() is self else "hidden")
+        self._ultima_pintura = (self.texto, self.ativo, self.cor, self.selecionado, self.simbolo,
+                               self.primario, self.mostrar_ponto)
 
 
 class Seletor(CanvasSuave):
@@ -595,12 +605,15 @@ class Janela(tk.Tk):
         self.carregar_icone()
         self.protocol("WM_DELETE_WINDOW", self.fechar)
         self.config_usuario = carregar()
+        self._arraste_brilho_ativo = False
+        self._brilho_antes_arraste = self.config_usuario["brilho"]
         self.moldura_windows = None
         self.controles_spotify = ControlesSpotify()
         self.estado_controles_midia = {}
         self.midia_ocupada = False
         self.conversor_fundo = ConversorFundo()
         self.fundo_painel_aberto, self.fundo_convertendo = False, False
+        self.lotus_painel = None
         self.fundo_nome_em_preparo = ""
         self.fundo_progresso, self.fundo_pendente = 0, False
         self.fundo_status = ("Escolha um vídeo. A preparação acontece aqui no app.", SECUNDARIO)
@@ -709,12 +722,13 @@ class Janela(tk.Tk):
         c.itemconfigure(self.valor_texto, anchor="ne")
         self.slider = Slider(self, self.valor_brilho(), self.mudar_brilho, largura=694, fundo=FUNDO)
         c.create_window(42, 590, window=self.slider, anchor="nw")
-        self.slider.dica = Dica(self.slider, "Ajustar brilho. 0% apaga a tela.")
+        self.slider.dica = Dica(self.slider, "Ajustar brilho. 0% apaga a tela e os LEDs.")
         self.auto = Botao(self, "Auto", self.automatico, largura=94, altura=48,
                           dica="Brilho automático por horário")
         c.create_window(750, 586, window=self.auto, anchor="nw")
         self.power = Botao(self, "", self.alternar_tela, largura=48, altura=48,
-                           simbolo="power", dica="Desligar tela")
+                           simbolo="power", dica="Apagar tela e LEDs",
+                           mostrar_ponto=False, mostrar_foco=False)
         c.create_window(904, 586, window=self.power, anchor="nw")
         self.brilho_dica = self.texto(64, 640, "", self.f_pequena, SECUNDARIO)
 
@@ -724,8 +738,8 @@ class Janela(tk.Tk):
         self.gaming_botao = Botao(self, "Gaming", self.alternar_gaming, largura=154,
                                   altura=48, simbolo="gaming", dica="Usar só o fundo e reduzir o processamento")
         c.create_window(636, 656, window=self.gaming_botao, anchor="nw")
-        self.lotus_botao = Botao(self, "Fita RGB", self.alternar_lotus, largura=150,
-                                 altura=48, dica="Sincronizar a fita Bluetooth pelo Lotus Lantern")
+        self.lotus_botao = Botao(self, "Fita RGB", self.abrir_lotus, largura=150,
+                                 altura=48, dica="Cor, brilho e conexão da fita Bluetooth")
         c.create_window(44, 656, window=self.lotus_botao, anchor="nw")
         self.lotus_botao.bind("<Button-3>", lambda e: self.escolher_lotus())
         self.aviso = self.texto(210, 673, "", self.f_pequena, SECUNDARIO, width=402)
@@ -736,7 +750,8 @@ class Janela(tk.Tk):
         self.fundo_painel.atualizar()
 
     def escolher_lotus(self):
-        pasta = filedialog.askdirectory(parent=self, title="Pasta do Lotus Lantern para Windows",
+        parent = self.lotus_painel if self.lotus_painel is not None and self.lotus_painel.visivel else self
+        pasta = filedialog.askdirectory(parent=parent, title="Pasta do Lotus Lantern para Windows",
                                          initialdir=self.config_usuario.get("lotus_pasta") or str(Path.home()))
         if not pasta:
             return False
@@ -744,8 +759,17 @@ class Janela(tk.Tk):
             self.mensagem("Escolha a pasta com config.cmd e src/ble-device.cjs.", "#966022")
             return False
         self.config_usuario["lotus_pasta"] = pasta
+        self.config_usuario["lotus_endereco"] = None
         self.guardar()
         return True
+
+    def abrir_lotus(self):
+        if self.lotus_painel is None:
+            self.lotus_painel = PainelLotus(self, Botao, Slider)
+        if self.lotus_painel.visivel:
+            self.lotus_painel.fechar()
+        else:
+            self.lotus_painel.abrir()
 
     def alternar_lotus(self):
         ativa = not self.config_usuario.get("lotus_ativo", False)
@@ -755,6 +779,8 @@ class Janela(tk.Tk):
         self.config_usuario["lotus_ativo"] = ativa
         self.atualizar_controles()
         self.guardar()
+        if self.lotus_painel is not None:
+            self.lotus_painel.atualizar()
         self.mensagem("Fita RGB conecta ao iniciar a exibição." if ativa and not self.rodando else "")
 
     def alternar_painel_fundo(self):
@@ -834,6 +860,8 @@ class Janela(tk.Tk):
             pass
 
     def fechar_paineis(self):
+        if self.lotus_painel is not None and self.lotus_painel.visivel:
+            self.lotus_painel.fechar()
         if self.fundo_painel_aberto:
             self.alternar_painel_fundo()
 
@@ -999,19 +1027,20 @@ class Janela(tk.Tk):
         automatico = self.config_usuario["brilho"] is None
         self.auto.atualizar(texto="Auto", cor=self.cor_modo, selecionado=automatico)
         self.power.atualizar(cor=self.cor_modo, selecionado=not ligada,
-                             dica="Desligar tela" if ligada else "Ligar tela")
+                             dica="Apagar tela e LEDs" if ligada else "Ligar tela e LEDs")
         self.iniciar.atualizar(cor=self.cor_modo)
         gaming = self.config_usuario.get("gaming", False)
         self.gaming_botao.atualizar(texto="Gaming", selecionado=gaming, cor=self.cor_modo,
                                     dica="Desligar Gaming" if gaming else "Só o fundo, com menos processamento")
         lotus = self.config_usuario.get("lotus_ativo", False)
         self.lotus_botao.atualizar(selecionado=lotus, cor=self.cor_modo,
-                                   dica="Desligar sincronização da fita. Botão direito: escolher pasta."
-                                   if lotus else "Sincronizar fita RGB. Botão direito: escolher pasta.")
+                                   dica="Abrir cor, brilho e conexão da fita RGB")
         self.seletor.dica.texto = ("Modo retomado ao sair de Gaming." if gaming
                                    else MODOS[self.seletor.indice][2])
         self.canvas.itemconfigure(self.modo_dica, text="")
         self.slider.atualizar(valor, self.cor_modo)
+        if self.lotus_painel is not None and self.lotus_painel.visivel:
+            self.lotus_painel.atualizar()
         self.canvas.itemconfigure(self.brilho_dica, text="")
         # As informações iniciais também respeitam o modo salvo na última sessão.
         if hasattr(self, "artista_texto"):
@@ -1048,19 +1077,39 @@ class Janela(tk.Tk):
                       if self.config_usuario["gaming"] else "Voltando ao modo de exibição selecionado…")
 
     def mudar_brilho(self, valor, aplicar):
+        if not self._arraste_brilho_ativo:
+            self._brilho_antes_arraste = self.config_usuario["brilho"]
+            self._arraste_brilho_ativo = True
         self.config_usuario["tela_ligada"] = valor > 0
         if valor > 0:
             self.config_usuario["brilho"] = valor
+        else:
+            # Voltar a ligar recupera o brilho anterior ao gesto, e não o
+            # último 1% pelo qual o slider passou antes de chegar a zero.
+            self.config_usuario["brilho"] = self._brilho_antes_arraste
         self.atualizar_controles()
         if aplicar:
+            self._arraste_brilho_ativo = False
             self.guardar()  # um comando ao soltar, sem inundar USB ou OpenRGB
 
     def automatico(self):
-        self.config_usuario["brilho"] = (self.valor_brilho() or brilho_horario()) if self.config_usuario["brilho"] is None else None
+        self._arraste_brilho_ativo = False
+        if self.slider.job is not None:
+            self.after_cancel(self.slider.job)
+            self.slider.job = None
+        if not self.config_usuario["tela_ligada"]:
+            self.config_usuario["brilho"] = None
+            self.config_usuario["tela_ligada"] = True
+        else:
+            self.config_usuario["brilho"] = self.valor_brilho() if self.config_usuario["brilho"] is None else None
         self.atualizar_controles()
         self.guardar()
 
     def alternar_tela(self):
+        self._arraste_brilho_ativo = False
+        if self.slider.job is not None:
+            self.after_cancel(self.slider.job)
+            self.slider.job = None
         self.config_usuario["tela_ligada"] = not self.config_usuario["tela_ligada"]
         self.atualizar_controles()
         self.guardar()
@@ -1194,7 +1243,9 @@ class Janela(tk.Tk):
         lotus = dados.get("lotus") or {}
         if self.config_usuario.get("lotus_ativo"):
             self.lotus_botao.atualizar(dica="Fita RGB: " + lotus.get("status", "Conectando…") +
-                                      ". Botão direito: escolher pasta.")
+                                      ". Clique para ajustar cor e brilho.")
+        if self.lotus_painel is not None and self.lotus_painel.visivel:
+            self.lotus_painel.atualizar()
         if dados.get("erro"):
             self.mensagem(dados["erro"], "#966022")
         elif self.config_usuario.get("lotus_ativo") and lotus.get("erro"):
@@ -1254,6 +1305,9 @@ class Janela(tk.Tk):
         if self.encerrando:
             return
         self.encerrando = True
+        if self.lotus_painel is not None:
+            self.lotus_painel.encerrar()
+            self.lotus_painel = None
         self.controles_spotify.fechar()
         self.relogio_animacao.fechar()
         self.rotacao_preview.fechar()

@@ -16,13 +16,16 @@ from pathlib import Path
 MODOS = ("dinamico", "spotify", "video")
 PADRAO = {"modo": "dinamico", "brilho": None, "tela_ligada": True,
           "video_ocioso": None, "video_ocioso_nome": "", "gaming": False,
-          "lotus_ativo": False, "lotus_pasta": None}
+          "lotus_ativo": False, "lotus_pasta": None,
+          "lotus_modo": "musica", "lotus_cor": [255, 255, 255],
+          "lotus_brilho": None, "lotus_endereco": None}
 ARQUIVO = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "TuringScreen" / "interface.json"
 PREFIXO = "@TURING_UI@"
 
 
 def validar(dados, anterior=None):
-    config = {k: v for k, v in (anterior or PADRAO).items() if k in PADRAO}
+    config = dict(PADRAO)
+    config.update({k: v for k, v in (anterior or {}).items() if k in PADRAO})
     if not isinstance(dados, dict):
         return config
     if dados.get("modo") in MODOS:
@@ -37,6 +40,21 @@ def validar(dados, anterior=None):
         config["gaming"] = dados["gaming"]
     if type(dados.get("lotus_ativo")) is bool:
         config["lotus_ativo"] = dados["lotus_ativo"]
+    if dados.get("lotus_modo") in ("musica", "manual"):
+        config["lotus_modo"] = dados["lotus_modo"]
+    cor = dados.get("lotus_cor")
+    if isinstance(cor, (list, tuple)) and len(cor) == 3 and all(
+            type(c) is int and 0 <= c <= 255 for c in cor):
+        config["lotus_cor"] = list(cor)
+    if "lotus_brilho" in dados:
+        valor = dados["lotus_brilho"]
+        if valor is None or (type(valor) is int and 0 <= valor <= 100):
+            config["lotus_brilho"] = valor
+    if "lotus_endereco" in dados:
+        endereco = dados["lotus_endereco"]
+        if endereco is None or (isinstance(endereco, str) and len(endereco) == 12
+                                and all(c in "0123456789abcdefABCDEF" for c in endereco)):
+            config["lotus_endereco"] = endereco.lower() if endereco else None
     if "lotus_pasta" in dados:
         pasta = dados["lotus_pasta"]
         if pasta is None or (isinstance(pasta, str) and 0 < len(pasta) <= 2048 and "\x00" not in pasta):
@@ -87,6 +105,10 @@ class Controles:
             self.revisao += 1
 
     def brilho(self, agora=None):
+        # O controle principal apaga também a iluminação sincronizada, sem
+        # perder o brilho escolhido para quando a tela for ligada novamente.
+        if not self.config["tela_ligada"]:
+            return 0
         return self.config["brilho"] if self.config["brilho"] is not None else brilho_horario(agora)
 
     def brilho_tela(self, agora=None):

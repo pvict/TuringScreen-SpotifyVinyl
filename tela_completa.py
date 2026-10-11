@@ -102,7 +102,9 @@ BRILHO_DIA = 100
 
 
 def brilho_para(agora):
-    # O botão de desligar atua só no backlight; o brilho dos LEDs é independente.
+    # O estado desligado vale para a tela e para os LEDs sincronizados.
+    if not controles.config["tela_ligada"]:
+        return 0
     if controles.config["brilho"] is not None:
         return controles.config["brilho"]
     h = agora.hour
