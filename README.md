@@ -1,3 +1,9 @@
+<h1 align="center">Turing Vinyl — Spotify for TURZX</h1>
+
+<p align="center"><a href="README.pt-BR.md">Português</a> · <a href="README.md">English</a></p>
+
+A **Windows desktop app** that turns a round **2.1-inch, 480 × 480 TURZX / Turing Smart Screen USB display** into an animated **Spotify vinyl record**, with album artwork and **OpenRGB** lighting. Built for a compatible water cooler LCD or secondary PC display.
+
 <p align="center">
   <img src="docs/images/turzx-480x480-spotify-vinyl.jpg" alt="Spotify vinyl on a round TURZX 480 × 480 USB display mounted on a water cooler" width="400">
   <img src="docs/images/turzx-480x480-openrgb-setup.jpg" alt="Water cooler LCD with album artwork and synchronized OpenRGB lighting inside a PC" width="400">
@@ -6,12 +12,6 @@
 https://github.com/user-attachments/assets/f876053e-42a8-4e0f-b7f9-6a048da14437
 
 24-second demo: pause/resume, background transitions, synchronized RGB and the playlist entrance.
-
-<h1 align="center">Turing Vinyl — Spotify for TURZX</h1>
-
-<p align="center"><a href="README.pt-BR.md">Português</a> · <a href="README.md">English</a></p>
-
-A **Windows desktop app** that turns a round **2.1-inch, 480 × 480 TURZX / Turing Smart Screen USB display** into an animated **Spotify vinyl record**, with album artwork and **OpenRGB** lighting. Built for a compatible water cooler LCD or secondary PC display.
 
 The record slows down on pause and accelerates on resume. Track changes flip the artwork; playlist and **Up next** cards share the same style. The app follows the album colors and provides brightness, playback and custom background controls.
 
