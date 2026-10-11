@@ -1,7 +1,6 @@
 <p align="center">
-  <img src="docs/images/turzx-480x480-spotify-vinyl.jpg" alt="Capa do Spotify como vinil na tela LCD redonda TURZX 480x480 instalada no water cooler" height="280">
-  <img src="docs/images/turzx-480x480-openrgb-setup.jpg" alt="Turing Vinyl funcionando no PC com iluminação OpenRGB sincronizada" height="280">
-  <img src="docs/images/turzx-spotify-true-colors.png" alt="True Colors de Cyndi Lauper na tela USB com iluminação RGB rosa acompanhando o álbum" height="280">
+  <img src="docs/images/turzx-480x480-openrgb-setup.jpg" alt="Turing Vinyl funcionando no PC com iluminação OpenRGB sincronizada" height="550">
+  <img src="docs/images/turzx-spotify-true-colors.png" alt="True Colors de Cyndi Lauper na tela USB com iluminação RGB rosa acompanhando o álbum" height="550">
 </p>
 
 https://github.com/user-attachments/assets/f876053e-42a8-4e0f-b7f9-6a048da14437
