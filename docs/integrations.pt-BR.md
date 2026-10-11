@@ -48,9 +48,19 @@ npm.cmd ci
 
 Mantenha a pasta com **config.cmd**, **src/ble-device.cjs** e **node_modules**.
 
-### 2. Configure o endereço da fita
+### 2. Conecte pelo Turing Vinyl
 
-Ligue o Bluetooth e a fita. Depois que o Windows detectar a controladora, execute no PowerShell:
+1. Ligue o Bluetooth e a fita. Feche o Lotus no celular e outros programas que a controlem.
+2. Abra **Turing Vinyl → Fita RGB** para mostrar o painel de controle.
+3. Clique em **Desligada** para ativar a fita. No primeiro uso, escolha a **pasta do Lotus** que você preparou.
+4. Clique em **Iniciar** na janela principal. O painel mostra o estado da conexão; **Pasta Lotus** troca a pasta usada.
+
+O app procura uma **ELK-BLEDDM** compatível e pode reencontrá-la após uma falha de conexão se o endereço mudar. Se encontrar várias fitas compatíveis, escolha a sua no painel. O endereço confirmado é salvo localmente; o `config.cmd` não é reescrito.
+
+<details>
+<summary>Opcional: informar um endereço Bluetooth conhecido</summary>
+
+Você pode fornecer um endereço inicial no **config.cmd** do Lotus. Depois que o Windows detectar a fita, consulte-o no PowerShell:
 
 ```powershell
 Get-PnpDevice -Class Bluetooth |
@@ -64,17 +74,18 @@ Em um identificador como `BTHLE\DEV_AA11BB22CC33\...`, **AA11BB22CC33** é o end
 set LED_DEVICE_UUID=AA11BB22CC33
 ```
 
-Use o seu endereço, não o exemplo. Se nenhum dispositivo aparecer, confira as configurações de Bluetooth do Windows. Se o endereço mudar depois, atualize essa linha.
+Use o seu endereço, não o exemplo. Se nenhum dispositivo aparecer, confira as configurações de Bluetooth do Windows.
 
-### 3. Conecte pelo Turing Vinyl
+</details>
 
-1. Feche o Lotus no celular e qualquer outro programa que controle a fita.
-2. Abra o **Turing Vinyl** e clique em **Fita RGB**. No primeiro uso, escolha a **pasta do Lotus** que você preparou.
-3. Clique em **Iniciar** na janela principal. A fita acompanha as cores do álbum e o brilho usado para os LEDs do PC, com transições suaves.
+### 3. Escolha cor e brilho
 
-Clique com o botão direito em **Fita RGB** para trocar a pasta do Lotus. Passe o mouse sobre ele para ver o estado da conexão. Clicar novamente desativa a sincronização; parar o app mantém a última cor na fita.
+- **Música:** acompanha a cor do álbum com transições suaves.
+- **Manual:** escolha uma cor fixa pela roda ou pelos campos **RGB, HSV ou HEX**.
+- **Brilho da fita:** ajusta a fita de forma independente. **Tela** acompanha o brilho dos LEDs do PC.
+- **Ligada / Desligada:** controla a fita; fechar o painel mantém os ajustes.
 
-O Turing Vinyl inicia sua própria ponte Bluetooth. Deixe o iniciador do Lotus fechado; essa integração não exige OpenRGB nem o plugin Effects. Em caso de falha de conexão, a ponte tenta novamente o endereço configurado.
+O Turing Vinyl inicia sua própria ponte Bluetooth. Deixe o iniciador do Lotus fechado; essa integração não exige OpenRGB nem o plugin Effects. Parar o app mantém a última cor na fita.
 
 ### Calibração das cores e registros
 

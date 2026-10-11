@@ -62,6 +62,8 @@ Double-click **Turing Vinyl.lnk** in the project folder. Use this shortcut every
   <img src="docs/images/turing-vinyl-interface.png" alt="Turing Vinyl Windows interface: rotating record, Spotify playback controls, display modes and brightness slider" width="860">
 </p>
 
+<p align="center"><sub>Spotify mode: album artwork, track and playlist details, playback controls and screen brightness.</sub></p>
+
 1. Connect the screen by USB and start a track in **Spotify for Windows**.
 2. Open **Turing Vinyl**, choose a mode and click **Iniciar** (Start).
 3. Click **Parar** (Stop) when finished.
@@ -82,9 +84,24 @@ The interface labels are currently in Portuguese.
 | **Fundo → Escolher vídeo** | Pick your background; the app converts it and saves your choice. **Padrão** restores the included video. |
 
 <details>
-<summary>See the background video panel</summary>
+<summary>Background video · choose your own</summary>
 
-<img src="docs/images/turing-vinyl-background.png" alt="Turing Vinyl background video picker with conversion progress" width="860">
+<p align="center">
+  <img src="docs/images/turing-vinyl-background.png" alt="Turing Vinyl background panel with Choose video, Default and automatic conversion progress" width="860">
+</p>
+
+Open **Fundo**, click **Escolher vídeo** and let the app prepare it. **Padrão** restores the bundled background.
+
+</details>
+
+<details>
+<summary>Bluetooth RGB strip · color and brightness</summary>
+
+<p align="center">
+  <img src="docs/images/turing-vinyl-rgb-strip.png" alt="Turing Vinyl alongside its Lotus Lantern Bluetooth RGB strip panel with color wheel, RGB HSV HEX inputs and brightness slider" width="1000">
+</p>
+
+Open **Fita RGB**. Choose **Música** to follow the album or **Manual** for the color wheel and RGB, HSV or HEX inputs. The brightness slider adjusts the strip; **Tela** follows the PC LEDs' brightness. [Connection guide](docs/integrations.md#bluetooth-strip-with-lotus-lantern).
 
 </details>
 

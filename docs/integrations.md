@@ -48,9 +48,19 @@ npm.cmd ci
 
 Keep the folder containing **config.cmd**, **src/ble-device.cjs** and **node_modules**.
 
-### 2. Set your strip's address
+### 2. Connect through Turing Vinyl
 
-Turn on Bluetooth and the strip. After Windows detects it, run this in PowerShell:
+1. Turn on Bluetooth and the strip. Close Lotus on the phone and other programs controlling it.
+2. Open **Turing Vinyl → Fita RGB** to show the control panel.
+3. Click **Desligada** to enable the strip. On the first use, select the **Lotus folder** you prepared.
+4. Click **Iniciar** in the main window. The panel shows the connection status; **Pasta Lotus** changes the folder.
+
+The app searches for a compatible **ELK-BLEDDM** and can rediscover it after a connection failure if its address changes. If several compatible strips are found, select yours in the panel. The confirmed address is saved locally; `config.cmd` is not rewritten.
+
+<details>
+<summary>Optional: provide a known Bluetooth address</summary>
+
+You can supply an initial address in the Lotus **config.cmd**. After Windows detects the strip, find it in PowerShell:
 
 ```powershell
 Get-PnpDevice -Class Bluetooth |
@@ -64,17 +74,18 @@ In an ID such as `BTHLE\DEV_AA11BB22CC33\...`, **AA11BB22CC33** is the address. 
 set LED_DEVICE_UUID=AA11BB22CC33
 ```
 
-Use your own address, not the example. If no device appears, check Windows Bluetooth settings. If the address changes later, update this line.
+Use your own address, not the example. If no device appears, check Windows Bluetooth settings.
 
-### 3. Connect through Turing Vinyl
+</details>
 
-1. Close Lotus on the phone and any other program controlling the strip.
-2. Open **Turing Vinyl** and click **Fita RGB**. On the first use, select the **Lotus folder** you prepared.
-3. Click **Iniciar** in the main window. The strip follows album colors and the brightness used for the PC LEDs, with smooth transitions.
+### 3. Choose color and brightness
 
-Right-click **Fita RGB** to change the Lotus folder. Hover over it for connection status. Clicking it again disables synchronization; stopping the app leaves the strip at its last color.
+- **Música:** follow the album color with smooth transitions.
+- **Manual:** choose a fixed color using the wheel or **RGB, HSV or HEX** inputs.
+- **Brilho da fita:** adjust the strip independently. **Tela** follows the PC LEDs' brightness.
+- **Ligada / Desligada:** control the strip; closing the panel keeps its settings.
 
-Turing Vinyl starts its own Bluetooth bridge. Keep the Lotus launcher closed; you do not need OpenRGB or its Effects plugin for this integration. On connection failure, the bridge retries the configured address.
+Turing Vinyl starts its own Bluetooth bridge. Keep the Lotus launcher closed; you do not need OpenRGB or its Effects plugin for this integration. Stopping the app leaves the strip at its last color.
 
 ### Color calibration and logs
 

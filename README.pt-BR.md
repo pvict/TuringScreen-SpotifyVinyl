@@ -63,6 +63,8 @@ Dê dois cliques em **Turing Vinyl.lnk**, na pasta do projeto. Use esse atalho n
   <img src="docs/images/turing-vinyl-interface.png" alt="Interface do Turing Vinyl no Windows: disco girando, controles do Spotify, modos de exibição e slider de brilho" width="860">
 </p>
 
+<p align="center"><sub>Modo Spotify: capa do álbum, informações da faixa e playlist, controles de música e brilho da tela.</sub></p>
+
 1. Conecte a tela por USB e coloque uma música no **Spotify para Windows**.
 2. Abra o **Turing Vinyl**, escolha um modo e clique em **Iniciar**.
 3. Clique em **Parar** quando terminar.
@@ -81,9 +83,24 @@ Dê dois cliques em **Turing Vinyl.lnk**, na pasta do projeto. Use esse atalho n
 | **Fundo → Escolher vídeo** | Escolha seu fundo; o app converte e salva a seleção. **Padrão** restaura o vídeo incluído. |
 
 <details>
-<summary>Ver o painel de vídeo de fundo</summary>
+<summary>Vídeo de fundo · escolha o seu</summary>
 
-<img src="docs/images/turing-vinyl-background.png" alt="Painel de escolha do vídeo de fundo no Turing Vinyl com progresso da conversão" width="860">
+<p align="center">
+  <img src="docs/images/turing-vinyl-background.png" alt="Painel Fundo do Turing Vinyl com Escolher vídeo, Padrão e progresso da conversão automática" width="860">
+</p>
+
+Abra **Fundo**, clique em **Escolher vídeo** e aguarde o preparo pelo app. **Padrão** restaura o fundo incluído.
+
+</details>
+
+<details>
+<summary>Fita RGB Bluetooth · cor e brilho</summary>
+
+<p align="center">
+  <img src="docs/images/turing-vinyl-rgb-strip.png" alt="Turing Vinyl ao lado do painel da fita RGB Bluetooth Lotus Lantern com roda de cores, campos RGB HSV HEX e slider de brilho" width="1000">
+</p>
+
+Abra **Fita RGB**. Escolha **Música** para acompanhar o álbum ou **Manual** para usar a roda de cores e os campos RGB, HSV ou HEX. O slider ajusta o brilho da fita; **Tela** acompanha o brilho dos LEDs do PC. [Guia de conexão](docs/integrations.pt-BR.md#fita-bluetooth-com-lotus-lantern).
 
 </details>
 
