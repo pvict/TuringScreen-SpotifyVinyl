@@ -3,6 +3,7 @@
 DDP local, independente do SDK OpenRGB e da transmissão USB. Só inicia o
 adaptador Bluetooth quando o usuário ativa a opção; não executa os .cmd.
 """
+import colorsys
 import datetime
 import json
 import math
@@ -19,6 +20,36 @@ RAIZ = Path(__file__).resolve().parent
 INTERVALO = 0.2
 FADE = 1.2
 ENDERECO = ("127.0.0.1", 4048)
+
+
+def _ajustar_vermelho_musica(cor_album, cor_pc):
+    """Aplica à fita o vermelho aprovado no painel, antes do equilíbrio BLE."""
+    r, g, b = cor_album[:3]
+    if r <= g or r <= b:
+        return cor_pc
+    hue, saturation, value = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+    distance = min(hue, 1 - hue)
+
+    def suave(valor):
+        t = max(0.0, min(1.0, valor))
+        return t * t * (3 - 2 * t)
+
+    # Só vermelhos saturados próximos de 0°/360°. O peso chega a zero
+    # aos 9° de distância e abaixo de 80% de saturação, preservando os
+    # laranjas, rosas, brancos e marrons que já foram calibrados.
+    peso = (suave((0.025 - distance) / (0.025 - 2 / 360))
+            * suave((saturation - 0.80) / 0.15)
+            * suave((value - 0.10) / 0.20))
+    if peso <= 0:
+        return cor_pc
+
+    # A capa viva (192, 1, 1) ficou correta com o RGB manual (211, 4, 0).
+    # Ambos passam depois pelo mesmo equilíbrio físico de canais do BLE.
+    # Escala com a intensidade original para não fixar todas as músicas
+    # no mesmo brilho; o modo Manual não passa por esta correção.
+    intensidade = r / 192
+    alvo = tuple(max(0, min(255, canal * intensidade)) for canal in (211, 4, 0))
+    return tuple(round(a + (b - a) * peso) for a, b in zip(cor_pc, alvo))
 
 
 def pasta_valida(pasta):
@@ -59,6 +90,7 @@ class LotusLantern:
         self._cor_idle = (142, 0, 218)
         self._cor_original = None
         self._cor_pc = None
+        self._cor_fita = None
         self._calibrar_pc = None
         try:
             perfil = json.loads((RAIZ / "perfil_ocioso.json").read_text(encoding="utf-8"))
@@ -190,8 +222,10 @@ class LotusLantern:
             if cor != self._cor_original:
                 self._cor_original = cor
                 self._cor_pc = self._calibrar_pc(cor)
-                self.log(f"lotus: cor da capa={cor}; referência do PC={self._cor_pc}")
-            cor = self._cor_pc
+                self._cor_fita = _ajustar_vermelho_musica(cor, self._cor_pc)
+                self.log(f"lotus: cor da capa={cor}; referência do PC={self._cor_pc}; "
+                         f"referência da fita={self._cor_fita}")
+            cor = self._cor_fita
         brilho = config.get("lotus_brilho")
         if brilho is None:
             brilho = self.brilho_para(datetime.datetime.now())
