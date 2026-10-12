@@ -52,6 +52,39 @@ def _ajustar_vermelho_musica(cor_album, cor_pc):
     return tuple(round(a + (b - a) * peso) for a, b in zip(cor_pc, alvo))
 
 
+def _ajustar_rosa_musica(cor_album, cor_fita):
+    """Estende o rosa aprovado a uma vizinhança suave de matiz/saturação."""
+    r, g, b = cor_album[:3]
+    if not (r > b > g):
+        return cor_fita
+    hue, saturation, value = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+    hue_base, saturation_base, _ = colorsys.rgb_to_hsv(240 / 255, 100 / 255, 119 / 255)
+    distance = abs(hue - hue_base)
+    distance = min(distance, 1 - distance)
+
+    def suave(valor):
+        t = max(0.0, min(1.0, valor))
+        return t * t * (3 - 2 * t)
+
+    # Peso completo perto da amostra; desvanece até 14 graus de matiz
+    # ou 20 pontos de saturação. Vermelhos puros, magentas, tons neutros
+    # e cores frias conservam suas calibrações anteriores.
+    peso = (suave((14 / 360 - distance) / (11 / 360))
+            * suave((0.20 - abs(saturation - saturation_base)) / 0.15)
+            * suave((value - 0.20) / 0.30))
+    if peso <= 0:
+        return cor_fita
+
+    # MTG Love Exalando: capa viva (240,100,119), referência PC (255,85,132).
+    # A amostra física BLE (255,19,31) foi aprovada visualmente. Com os
+    # ganhos RGB atuais, a entrada (255,35,57) reproduz essa mesma amostra.
+    # Reduz só G/B em proporção à referência para preservar diferenças
+    # entre músicas e permitir que o brilho da fita continue independente.
+    ganhos = (1.0, 35 / 85, 57 / 132)
+    return tuple(round(c * (1 + (ganho - 1) * peso))
+                 for c, ganho in zip(cor_fita, ganhos))
+
+
 def pasta_valida(pasta):
     if not pasta:
         return False
@@ -222,7 +255,8 @@ class LotusLantern:
             if cor != self._cor_original:
                 self._cor_original = cor
                 self._cor_pc = self._calibrar_pc(cor)
-                self._cor_fita = _ajustar_vermelho_musica(cor, self._cor_pc)
+                self._cor_fita = _ajustar_rosa_musica(
+                    cor, _ajustar_vermelho_musica(cor, self._cor_pc))
                 self.log(f"lotus: cor da capa={cor}; referência do PC={self._cor_pc}; "
                          f"referência da fita={self._cor_fita}")
             cor = self._cor_fita
