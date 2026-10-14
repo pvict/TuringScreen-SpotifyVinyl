@@ -621,10 +621,15 @@ class Janela(tk.Tk):
         self.encerrando, self.iniciando, self.rodando = False, False, False
         self.config_job = None
         self.midia, self.capa = None, None
+        self._chave_texto_midia = None
+        self._posicao_controles_midia = None
         self.capa_preview = None
         self.capa_base = disco_base()
         self.rotacao_preview = RotacaoPreview(self.capa_base)
         self._apresentar_job = None
+        self._disco_pil = None
+        self._fundo_preview_chave = None
+        self._fundo_preview = None
         self.cor_modo = PRATA if self.config_usuario.get("gaming") else next(
             m[3] for m in MODOS if m[0] == self.config_usuario["modo"])
         self.cor_destino, self.tema_job = self.cor_modo, None
@@ -896,17 +901,33 @@ class Janela(tk.Tk):
             # Descarta uma capa anterior se o modo ou a música mudou durante o cálculo.
             if (chave[0] == self._preview_chave[0]
                     and chave[4] == self._preview_chave[4]):
-                if not hasattr(self, "_buffers_disco"):
-                    self._buffers_disco = [ImageTk.PhotoImage(disco), ImageTk.PhotoImage(disco)]
-                    self._buffer_disco_indice = 0
-                else:
-                    self._buffer_disco_indice = 1 - self._buffer_disco_indice
-                    # Atualiza a imagem que não está exibida, depois troca os buffers.
-                    self._buffers_disco[self._buffer_disco_indice].paste(disco)
-                self.img_disco = self._buffers_disco[self._buffer_disco_indice]
-                self.canvas.itemconfigure(self.disco_item, image=self.img_disco)
+                self.apresentar_disco(disco)
         if self.rotacao_preview.pendente():
             self._apresentar_job = self.after(8, self.mostrar_disco_pronto)
+
+    def apresentar_disco(self, disco):
+        self._disco_pil = disco
+        chave_fundo = (id(self.fundo_atual), self.cor_modo)
+        if chave_fundo != self._fundo_preview_chave:
+            # O disco de 270 px está centrado em (285,263) no Canvas.
+            # Reproduz sob ele as mesmas duas camadas que a janela desenha:
+            # fundo fixo e acento colocado em (91,69).
+            base = self.fundo_atual.crop((150, 128, 420, 398))
+            acento = acento_vinil(self.cor_modo).crop((59, 59, 329, 329))
+            self._fundo_preview = Image.alpha_composite(base, acento)
+            self._fundo_preview_chave = chave_fundo
+        # Transferir RGBA pelo PhotoImage.paste custa mais que RGB no Tk.
+        # Compor este pequeno trecho no Pillow permite reutilizar buffers
+        # RGB opacos, preservando o fundo e o antialias das bordas do disco.
+        imagem = Image.alpha_composite(self._fundo_preview, disco).convert("RGB")
+        if not hasattr(self, "_buffers_disco"):
+            self._buffers_disco = [ImageTk.PhotoImage(imagem), ImageTk.PhotoImage(imagem)]
+            self._buffer_disco_indice = 0
+        else:
+            self._buffer_disco_indice = 1 - self._buffer_disco_indice
+            self._buffers_disco[self._buffer_disco_indice].paste(imagem)
+        self.img_disco = self._buffers_disco[self._buffer_disco_indice]
+        self.canvas.itemconfigure(self.disco_item, image=self.img_disco)
 
     def cor_desejada(self):
         if self.config_usuario.get("gaming"):
@@ -935,6 +956,10 @@ class Janela(tk.Tk):
             s = t * t * (3 - 2 * t)
             self.cor_modo = misturar(origem, destino, s)
             self.img_acento.paste(acento_vinil(self.cor_modo))
+            if self._disco_pil is not None:
+                # Atualiza também o fundo sob um vinil pausado, sem pedir
+                # outra rotação nem esperar um quadro do motor da tela.
+                self.apresentar_disco(self._disco_pil)
             self.canvas.itemconfigure(self.hero_rotulo, fill=SECUNDARIO)
             self.seletor.atualizar_cor(self.cor_modo)
             for botao in (self.auto, self.power, self.iniciar, self.fundo_botao,
@@ -1208,8 +1233,11 @@ class Janela(tk.Tk):
             botao.atualizar(**opcoes)
 
     def posicionar_controles_midia(self, y=331):
+        if y == self._posicao_controles_midia:
+            return
         for item, x, lado in self.midia_itens.values():
             self.canvas.coords(item, x, y + (60 - lado) / 2)
+        self._posicao_controles_midia = y
 
     def atualizar_estado(self, dados):
         if "visual" in dados:
@@ -1265,15 +1293,31 @@ class Janela(tk.Tk):
     def atualizar_texto_midia(self):
         dados = self.midia or {}
         musica = dados.get("musica")
+        chave = (
+            self.rodando, bool(dados.get("conectada")),
+            self.config_usuario["modo"], bool(self.config_usuario.get("gaming")),
+            tuple(musica) if musica else None, bool(dados.get("tocando")),
+            dados.get("playlist_nome"), bool(dados.get("gaming_preparando")),
+            self.config_usuario["video_ocioso_nome"],
+            self.f_faixa.chave, self.f_sans.chave, self.f_pequena.chave,
+        )
+        if chave == self._chave_texto_midia:
+            return
+        self._desenhar_texto_midia(dados)
+        self._chave_texto_midia = chave
+
+    def _desenhar_texto_midia(self, dados):
+        musica = dados.get("musica")
         gaming = self.config_usuario.get("gaming", False)
         self.canvas.itemconfigure(self.playlist_texto, text="")
-        self.posicionar_controles_midia()
         if not self.rodando or not dados.get("conectada"):
+            self.posicionar_controles_midia()
             self.canvas.itemconfigure(self.hero_rotulo, text="")
             self.canvas.itemconfigure(self.faixa_texto, text="Esperando por você…")
             self.canvas.itemconfigure(self.artista_texto, text="")
             return
         if gaming or self.config_usuario["modo"] == "video":
+            self.posicionar_controles_midia()
             self.canvas.itemconfigure(self.hero_rotulo, text="Gaming" if gaming else "Vídeo")
             self.canvas.itemconfigure(self.faixa_texto, text="Vídeo de fundo")
             self.canvas.itemconfigure(self.artista_texto, text="Preparando…" if dados.get("gaming_preparando") else
@@ -1297,6 +1341,7 @@ class Janela(tk.Tk):
                                            text=self.encurtar(playlist, 408, self.f_pequena))
             self.posicionar_controles_midia(max(331, y_artista + (56 if playlist else 32)))
         else:
+            self.posicionar_controles_midia()
             self.canvas.itemconfigure(self.hero_rotulo, text="")
             self.canvas.itemconfigure(self.faixa_texto, text="Esperando por você…")
             self.canvas.itemconfigure(self.artista_texto, text="")

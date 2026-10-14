@@ -440,8 +440,14 @@ def icone(nome, cor=TEXTO, lado=24):
 
 class RotacaoPreview:
     """Só Pillow fora da janela; um pedido e um resultado recentes, sem fila acumulada."""
+    LIMITE_CACHE_BYTES = 32 * 1024 * 1024
+
     def __init__(self, disco):
         self.disco = disco
+        # Cache só da camada fixa. A capa continua com a rotação exata.
+        self._base_cache = disco
+        self._rotacoes = OrderedDict()
+        self._bytes_rotacoes = 0
         self.pedidos = queue.Queue(maxsize=1)
         self.resultados = queue.Queue(maxsize=1)
         self.fechar_evento = threading.Event()
@@ -481,6 +487,37 @@ class RotacaoPreview:
     def pendente(self):
         return self.chave != self._recebida
 
+    def _rotacao_inteira(self, grau):
+        imagem = self._rotacoes.get(grau)
+        if imagem is not None:
+            self._rotacoes.move_to_end(grau)
+            return imagem
+        imagem = self.disco.rotate(grau, resample=Image.Resampling.BICUBIC)
+        tamanho = imagem.width * imagem.height * len(imagem.getbands())
+        if tamanho <= self.LIMITE_CACHE_BYTES:
+            while self._rotacoes and self._bytes_rotacoes + tamanho > self.LIMITE_CACHE_BYTES:
+                _, antiga = self._rotacoes.popitem(last=False)
+                self._bytes_rotacoes -= antiga.width * antiga.height * len(antiga.getbands())
+            self._rotacoes[grau] = imagem
+            self._bytes_rotacoes += tamanho
+        return imagem
+
+    def _disco_rotacionado(self, angulo):
+        if self._base_cache is not self.disco:
+            self._rotacoes.clear()
+            self._bytes_rotacoes = 0
+            self._base_cache = self.disco
+        posicao = (-angulo) % 360
+        grau = math.floor(posicao)
+        fracao = posicao - grau
+        inicio = self._rotacao_inteira(grau)
+        if fracao < 1e-9:
+            return inicio.copy()  # a composição da capa não altera o cache
+        fim = self._rotacao_inteira((grau + 1) % 360)
+        # Interpola a posição contínua, inclusive 359° -> 0°, mantendo os
+        # 60 FPS e a desaceleração sem prender o movimento a graus inteiros.
+        return Image.blend(inicio, fim, fracao)
+
     def _executar(self):
         while not self.fechar_evento.is_set():
             pedido = self.pedidos.get()
@@ -489,7 +526,7 @@ class RotacaoPreview:
             self.em_render = True
             try:
                 chave, capa, angulo, externo, lado, cor = pedido
-                disco = self.disco.rotate(-externo, resample=Image.Resampling.BICUBIC)
+                disco = self._disco_rotacionado(externo)
                 if capa is not None:
                     imagem = capa.rotate(-angulo, resample=Image.Resampling.BICUBIC)
                     if lado != imagem.width:
